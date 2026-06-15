@@ -465,44 +465,32 @@
             });
         }
 
-        // Binary Search Tracker
         function startPlaybackTracker() {
             setInterval(() => {
                 if(!AppState.player || AppState.player.getPlayerState() !== 1) return;
-                const cTime = AppState.player.getCurrentTime();
-                
-                // Active highlighting mapping logic here
+                // Playback tracking logic can be expanded here
             }, 500);
         }
 
         function seekVideo(seconds) {
-            if(AppState.player) {
+            if(AppState.player && AppState.player.getCurrentTime) {
                 const cTime = AppState.player.getCurrentTime();
                 AppState.player.seekTo(cTime + seconds);
             }
         }
 
         // --- 7. EXPORT ENGINE ---
-        docuurlInput.addEventListener('input', () => {
-                if(urlInput.value && rawJsonData) startBtn.style.display = 'block';
-            });
-
-            const quickTestLink = document.getElementById('quick-test-link');
-            if (quickTestLink) {
-                quickTestLink.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    urlInput.value = quickTestLink.innerText;
-                    if(urlInput.value && rawJsonData) startBtn.style.display = 'block';
-                });
-            }
-
-            startBtn.addEventListener('click', () => {, "refined_transcript.json");
+        document.getElementById('export-btn').addEventListener('click', () => {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(AppState.sentences, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "refined_transcript.json");
             document.body.appendChild(downloadAnchorNode); 
             downloadAnchorNode.click();
             downloadAnchorNode.remove();
         });
 
-// --- 8. INITIALIZATION FLOW ---
+        // --- 8. INITIALIZATION FLOW ---
         document.addEventListener('DOMContentLoaded', async () => {
             await DB.init();
             
@@ -511,7 +499,6 @@
             const startBtn = document.getElementById('start-btn');
             const quickTestLink = document.getElementById('quick-test-link');
 
-            // इनपुट चेक करने का नया और सॉलिड तरीका
             function checkInputs() {
                 if(urlInput.value.trim() !== '' && fileInput.files.length > 0) {
                     startBtn.style.display = 'block';
@@ -524,7 +511,7 @@
                 quickTestLink.addEventListener('click', (e) => {
                     e.preventDefault();
                     urlInput.value = quickTestLink.innerText;
-                    checkInputs(); // तुरंत बटन दिखाओ
+                    checkInputs();
                 });
             }
 
@@ -543,7 +530,6 @@
                 document.getElementById('processing-screen').classList.add('active');
                 updateProcessLog("Reading File...");
 
-                // फाइल को 'Start' बटन दबाने के बाद पढ़ें ताकि ऐप फ्रीज़ न हो
                 const reader = new FileReader();
                 reader.onload = async (ev) => {
                     try {
@@ -557,14 +543,23 @@
                         
                         initPlayer(AppState.videoId);
                         renderSentences();
-                        DB.saveProject(AppState.videoId, AppState.sentences);
+                        await DB.saveProject(AppState.videoId, AppState.sentences);
                     } catch (err) {
+                        console.error(err);
                         alert("Error processing file: " + err.message);
                         document.getElementById('processing-screen').classList.remove('active');
                         document.getElementById('setup-screen').classList.add('active');
                     }
                 };
                 reader.readAsText(file);
+            });
+
+            // Play/Pause handling
+            document.getElementById('play-pause-btn').addEventListener('click', () => {
+                if(!AppState.player) return;
+                const state = AppState.player.getPlayerState();
+                if(state === 1) AppState.player.pauseVideo();
+                else AppState.player.playVideo();
             });
         });
     </script>
