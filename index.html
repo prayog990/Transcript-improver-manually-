@@ -199,6 +199,11 @@
             <input type="text" id="yt-url" placeholder="Paste YouTube URL">
             <input type="file" id="json-upload" accept=".json">
             
+            <div style="margin-top: 16px; background: rgba(187, 134, 252, 0.1); padding: 12px; border-radius: 8px; border: 1px dashed var(--primary); font-size: 14px; text-align: left;">
+                <span style="color: #888;">Quick Test Link (Click to fill):</span><br>
+                <a href="#" id="quick-test-link" style="color: var(--primary); text-decoration: none; word-break: break-all; font-weight: bold; display: inline-block; margin-top: 5px;">https://youtu.be/BJKJtB_bAfQ?si=f_wyXsx6xXqdzcrl</a>
+            </div>
+
             <div id="project-summary" style="display:none; text-align:left; margin: 10px 0; font-size:14px;"></div>
             
             <button id="start-btn" style="display:none;">Start Processing</button>
@@ -273,7 +278,7 @@
             }
         };
 
-        // --- 3. SENTENCE GROUPING ENGINE ---
+ // --- 3. SENTENCE GROUPING ENGINE ---
         async function processRawJSON(rawWords) {
             updateProcessLog("Grouping Sentences...");
             const sentences = [];
@@ -281,36 +286,70 @@
             let sentenceCounter = 1;
             
             const punctuationMarkers = ['।', '?', '!'];
-            const totalWords = rawWords.length;
-            const chunkSize = 2000; // एक बार में 2000 शब्द प्रोसेस करेंगे
+            
+            // नया लॉजिक: चेक करें कि JSON का डेटा कहाँ है
+            let dataArray = [];
+            if (rawWords && rawWords.results && Array.isArray(rawWords.results)) {
+                dataArray = rawWords.results;
+            } else if (Array.isArray(rawWords)) {
+                dataArray = rawWords;
+            } else {
+                alert("Invalid JSON format!");
+                return [];
+            }
+
+            const totalWords = dataArray.length;
+            const chunkSize = 2000;
             
             const progressBar = document.getElementById('progress-bar');
             const progressText = document.getElementById('progress-text');
 
             for (let i = 0; i < totalWords; i += chunkSize) {
-                const chunk = rawWords.slice(i, i + chunkSize);
+                const chunk = dataArray.slice(i, i + chunkSize);
                 
-                chunk.forEach((wordObj, chunkIndex) => {
+                chunk.forEach((item, chunkIndex) => {
                     const index = i + chunkIndex;
-                    const wordText = wordObj.w || wordObj.word || "";
+                    
+                    // नए और पुराने दोनों JSON फॉर्मेट को सपोर्ट करने के लिए:
+                    let wordText = "";
+                    let conf = 1;
+                    if (item.alternatives && item.alternatives.length > 0) {
+                        wordText = item.alternatives[0].content || "";
+                        conf = item.alternatives[0].confidence !== undefined ? item.alternatives[0].confidence : 1;
+                    } else {
+                        wordText = item.w || item.word || "";
+                        conf = item.c !== undefined ? item.c : 1;
+                    }
+                    
+                    let startTime = item.start_time !== undefined ? item.start_time : (item.s || 0);
+                    let endTime = item.end_time !== undefined ? item.end_time : (item.e || startTime);
+                    let isEos = item.is_eos === true;
+
                     if (!currentSentence) {
                         currentSentence = {
                             id: `s${String(sentenceCounter++).padStart(6, '0')}`,
                             speaker: "UU",
-                            sentence_start: wordObj.s || 0,
+                            sentence_start: startTime,
                             words: [],
                             shuddh_text: ""
                         };
                     }
 
-                    currentSentence.words.push(wordObj);
-                    currentSentence.sentence_end = wordObj.e || currentSentence.sentence_start;
-                    currentSentence.shuddh_text += wordText + " ";
+                    currentSentence.words.push({ c: conf });
+                    currentSentence.sentence_end = endTime;
+                    
+                    // अगर विराम चिह्न पहले वाले शब्द से जुड़ता है (space न आए)
+                    if (item.attaches_to === "previous") {
+                         currentSentence.shuddh_text = currentSentence.shuddh_text.trim() + wordText + " ";
+                    } else {
+                         currentSentence.shuddh_text += wordText + " ";
+                    }
 
-                    // Logic for boundary
-                    const isPunctuation = punctuationMarkers.some(p => wordText.includes(p));
-                    const nextWord = rawWords[index + 1];
-                    const isLongSilence = nextWord && (nextWord.s - wordObj.e > 1.2);
+                    // वाक्य खत्म होने का लॉजिक
+                    const isPunctuation = punctuationMarkers.some(p => wordText.includes(p)) || isEos;
+                    const nextItem = dataArray[index + 1];
+                    let nextStartTime = nextItem ? (nextItem.start_time !== undefined ? nextItem.start_time : (nextItem.s || 0)) : null;
+                    const isLongSilence = nextItem && (nextStartTime - endTime > 1.2);
 
                     if (isPunctuation || isLongSilence || index === totalWords - 1) {
                         currentSentence.shuddh_text = currentSentence.shuddh_text.trim();
@@ -319,12 +358,10 @@
                     }
                 });
 
-                // UI और प्रोग्रेस बार अपडेट करें
                 const progress = Math.min(100, Math.round(((i + chunkSize) / totalWords) * 100));
                 progressBar.style.width = `${progress}%`;
                 progressText.innerText = `${progress}%`;
 
-                // Main thread को थोड़ा आराम दें ताकि UI फ्रीज़ न हो
                 await new Promise(resolve => setTimeout(resolve, 0));
             }
             
@@ -446,11 +483,20 @@
         }
 
         // --- 7. EXPORT ENGINE ---
-        document.getElementById('export-btn').addEventListener('click', () => {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(AppState.sentences, null, 2));
-            const downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href",     dataStr);
-            downloadAnchorNode.setAttribute("download", "refined_transcript.json");
+        docuurlInput.addEventListener('input', () => {
+                if(urlInput.value && rawJsonData) startBtn.style.display = 'block';
+            });
+
+            const quickTestLink = document.getElementById('quick-test-link');
+            if (quickTestLink) {
+                quickTestLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    urlInput.value = quickTestLink.innerText;
+                    if(urlInput.value && rawJsonData) startBtn.style.display = 'block';
+                });
+            }
+
+            startBtn.addEventListener('click', () => {, "refined_transcript.json");
             document.body.appendChild(downloadAnchorNode); 
             downloadAnchorNode.click();
             downloadAnchorNode.remove();
