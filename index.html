@@ -207,6 +207,7 @@
             <div id="project-summary" style="display:none; text-align:left; margin: 10px 0; font-size:14px;"></div>
             
             <button id="start-btn" style="display:none;">Start Processing</button>
+            <button id="resume-btn" style="display:none; background-color: #03dac6; margin-top: 10px;">Resume Previous Work</button>
         </div>
     </div>
 
@@ -274,6 +275,16 @@
                     const tx = this.db.transaction('projects', 'readwrite');
                     tx.objectStore('projects').put({ videoId, data, updatedAt: Date.now() });
                     tx.oncomplete = () => resolve();
+                });
+            },
+            async getProject(videoId) {
+                return new Promise((resolve) => {
+                    if(!this.db) return resolve(null);
+                    const tx = this.db.transaction('projects', 'readonly');
+                    const store = tx.objectStore('projects');
+                    const req = store.get(videoId);
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => resolve(null);
                 });
             }
         };
@@ -497,14 +508,36 @@
             const urlInput = document.getElementById('yt-url');
             const fileInput = document.getElementById('json-upload');
             const startBtn = document.getElementById('start-btn');
+            const resumeBtn = document.getElementById('resume-btn');
+            const summaryDiv = document.getElementById('project-summary');
             const quickTestLink = document.getElementById('quick-test-link');
 
-            function checkInputs() {
+            async function checkInputs() {
+                const vId = extractVideoID(urlInput.value);
+                if(vId) {
+                    const saved = await DB.getProject(vId);
+                    if(saved) {
+                        summaryDiv.innerHTML = `✅ Found saved work from ${new Date(saved.updatedAt).toLocaleString()}`;
+                        summaryDiv.style.display = 'block';
+                        resumeBtn.style.display = 'block';
+                    } else {
+                        summaryDiv.style.display = 'none';
+                        resumeBtn.style.display = 'none';
+                    }
+                }
+                
                 if(urlInput.value.trim() !== '' && fileInput.files.length > 0) {
                     startBtn.style.display = 'block';
                 } else {
                     startBtn.style.display = 'none';
                 }
+            }
+
+            // Auto-load last session
+            const lastId = localStorage.getItem('lastVideoId');
+            if(lastId) {
+                urlInput.value = `https://www.youtube.com/watch?v=${lastId}`;
+                checkInputs();
             }
 
             if (quickTestLink) {
@@ -518,7 +551,23 @@
             fileInput.addEventListener('change', checkInputs);
             urlInput.addEventListener('input', checkInputs);
 
+            resumeBtn.addEventListener('click', async () => {
+                const vId = extractVideoID(urlInput.value);
+                const saved = await DB.getProject(vId);
+                if(saved) {
+                    AppState.videoId = vId;
+                    AppState.sentences = saved.data;
+                    localStorage.setItem('lastVideoId', vId);
+                    
+                    document.getElementById('setup-screen').classList.remove('active');
+                    document.getElementById('editor-screen').classList.add('active');
+                    initPlayer(vId);
+                    renderSentences();
+                }
+            });
+
             startBtn.addEventListener('click', () => {
+                localStorage.setItem('lastVideoId', extractVideoID(urlInput.value));
                 const vId = extractVideoID(urlInput.value);
                 if(!vId) return alert("Invalid YouTube URL");
                 
