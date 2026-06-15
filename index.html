@@ -502,51 +502,69 @@
             downloadAnchorNode.remove();
         });
 
-        // --- 8. INITIALIZATION FLOW ---
+// --- 8. INITIALIZATION FLOW ---
         document.addEventListener('DOMContentLoaded', async () => {
             await DB.init();
             
             const urlInput = document.getElementById('yt-url');
             const fileInput = document.getElementById('json-upload');
             const startBtn = document.getElementById('start-btn');
-            
-            let rawJsonData = null;
+            const quickTestLink = document.getElementById('quick-test-link');
 
-            fileInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if(file) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        rawJsonData = JSON.parse(ev.target.result);
-                        if(urlInput.value && rawJsonData) startBtn.style.display = 'block';
-                    };
-                    reader.readAsText(file);
+            // इनपुट चेक करने का नया और सॉलिड तरीका
+            function checkInputs() {
+                if(urlInput.value.trim() !== '' && fileInput.files.length > 0) {
+                    startBtn.style.display = 'block';
+                } else {
+                    startBtn.style.display = 'none';
                 }
-            });
+            }
 
-            urlInput.addEventListener('input', () => {
-                if(urlInput.value && rawJsonData) startBtn.style.display = 'block';
-            });
+            if (quickTestLink) {
+                quickTestLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    urlInput.value = quickTestLink.innerText;
+                    checkInputs(); // तुरंत बटन दिखाओ
+                });
+            }
+
+            fileInput.addEventListener('change', checkInputs);
+            urlInput.addEventListener('input', checkInputs);
 
             startBtn.addEventListener('click', () => {
                 const vId = extractVideoID(urlInput.value);
                 if(!vId) return alert("Invalid YouTube URL");
                 
+                const file = fileInput.files[0];
+                if(!file) return alert("Please select a JSON file");
+
                 AppState.videoId = vId;
                 document.getElementById('setup-screen').classList.remove('active');
                 document.getElementById('processing-screen').classList.add('active');
+                updateProcessLog("Reading File...");
 
-                setTimeout(async () => {
-                    // अब ये await करेगा क्योंकि फंक्शन async हो चुका है
-                    AppState.sentences = await processRawJSON(rawJsonData);
-                    
-                    document.getElementById('processing-screen').classList.remove('active');
-                    document.getElementById('editor-screen').classList.add('active');
-                    
-                    initPlayer(AppState.videoId);
-                    renderSentences();
-                    DB.saveProject(AppState.videoId, AppState.sentences);
-                }, 500);
+                // फाइल को 'Start' बटन दबाने के बाद पढ़ें ताकि ऐप फ्रीज़ न हो
+                const reader = new FileReader();
+                reader.onload = async (ev) => {
+                    try {
+                        updateProcessLog("Parsing JSON...");
+                        const rawJsonData = JSON.parse(ev.target.result);
+                        
+                        AppState.sentences = await processRawJSON(rawJsonData);
+                        
+                        document.getElementById('processing-screen').classList.remove('active');
+                        document.getElementById('editor-screen').classList.add('active');
+                        
+                        initPlayer(AppState.videoId);
+                        renderSentences();
+                        DB.saveProject(AppState.videoId, AppState.sentences);
+                    } catch (err) {
+                        alert("Error processing file: " + err.message);
+                        document.getElementById('processing-screen').classList.remove('active');
+                        document.getElementById('setup-screen').classList.add('active');
+                    }
+                };
+                reader.readAsText(file);
             });
         });
     </script>
