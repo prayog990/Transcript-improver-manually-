@@ -125,10 +125,10 @@
             background: var(--surface);
             padding: 10px;
             display: flex;
+            flex-wrap: wrap;
+            align-items: center;
             gap: 10px;
             border-bottom: 1px solid var(--border);
-            overflow-x: auto;
-            white-space: nowrap;
             flex-shrink: 0;
         }
 
@@ -165,8 +165,20 @@
         .card-header {
             display: flex;
             justify-content: space-between;
+            align-items: center;
             font-size: 12px;
             color: #888;
+        }
+
+        .speaker-edit {
+            display: inline-block;
+            min-width: 40px;
+            padding: 2px 8px;
+            background-color: var(--primary);
+            color: var(--btn-text);
+            border-radius: 4px;
+            text-align: center;
+            cursor: text;
         }
 
         .shuddh-text-area {
@@ -274,6 +286,23 @@
                     const tx = this.db.transaction('projects', 'readwrite');
                     tx.objectStore('projects').put({ videoId, data, updatedAt: Date.now() });
                     tx.oncomplete = () => resolve();
+                });
+            },
+            async loadLastProject() {
+                return new Promise((resolve) => {
+                    const tx = this.db.transaction('projects', 'readonly');
+                    const request = tx.objectStore('projects').getAll();
+                    request.onsuccess = () => {
+                        const projects = request.result;
+                        if (projects && projects.length > 0) {
+                            // सबसे ताज़ा (latest) प्रोजेक्ट को छांटें
+                            projects.sort((a, b) => b.updatedAt - a.updatedAt);
+                            resolve(projects[0]);
+                        } else {
+                            resolve(null);
+                        }
+                    };
+                    request.onerror = () => resolve(null);
                 });
             }
         };
@@ -394,7 +423,7 @@
 
                 card.innerHTML = `
                     <div class="card-header">
-                        <span><b class="speaker-edit" contenteditable="true">${s.speaker}</b> | ${s.id}</span>
+                        <span><b class="speaker-edit" contenteditable="true" onblur="handleSpeakerEdit('${s.id}', this.innerText)">${s.speaker}</b> | ${s.id}</span>
                         <span>⏱ ${s.sentence_start.toFixed(2)}s - ${s.sentence_end.toFixed(2)}s | <span class="${confClass}">Conf: ${(avgConf*100).toFixed(0)}%</span></span>
                     </div>
                     <textarea class="shuddh-text-area" oninput="autoGrow(this); handleTextEdit('${s.id}', this.value)" onfocus="pauseForEdit()">${s.shuddh_text}</textarea>
@@ -416,15 +445,25 @@
             const sentence = AppState.sentences.find(s => s.id === id);
             if(sentence) {
                 sentence.shuddh_text = newText;
-                document.getElementById('save-indicator').innerText = 'Saving...';
-                
-                // Debounced Autosave
-                clearTimeout(saveTimeout);
-                saveTimeout = setTimeout(async () => {
-                    await DB.saveProject(AppState.videoId, AppState.sentences);
-                    document.getElementById('save-indicator').innerText = 'Saved';
-                }, 300);
+                triggerAutoSave();
             }
+        }
+
+        function handleSpeakerEdit(id, newSpeaker) {
+            const sentence = AppState.sentences.find(s => s.id === id);
+            if(sentence) {
+                sentence.speaker = newSpeaker.trim() || "UU";
+                triggerAutoSave();
+            }
+        }
+
+        function triggerAutoSave() {
+            document.getElementById('save-indicator').innerText = 'Saving...';
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(async () => {
+                await DB.saveProject(AppState.videoId, AppState.sentences);
+                document.getElementById('save-indicator').innerText = 'Saved';
+            }, 300);
         }
 
         function autoGrow(element) {
@@ -454,6 +493,12 @@
         }
 
         function initPlayer(videoId) {
+            // अगर YouTube API अभी लोड नहीं हुआ है, तो 200ms इंतज़ार करके दोबारा कोशिश करो
+            if (typeof YT === 'undefined' || typeof YT.Player === 'undefined') {
+                setTimeout(() => initPlayer(videoId), 200);
+                return;
+            }
+
             AppState.player = new YT.Player('player', {
                 height: '100%',
                 width: '100%',
@@ -492,8 +537,6 @@
 
         // --- 8. INITIALIZATION FLOW ---
         document.addEventListener('DOMContentLoaded', async () => {
-            await DB.init();
-            
             const urlInput = document.getElementById('yt-url');
             const fileInput = document.getElementById('json-upload');
             const startBtn = document.getElementById('start-btn');
@@ -561,6 +604,26 @@
                 if(state === 1) AppState.player.pauseVideo();
                 else AppState.player.playVideo();
             });
+
+            // --- Database & Auto Restore Logic (Executed Safely at the End) ---
+            try {
+                await DB.init();
+                const lastProject = await DB.loadLastProject();
+                if (lastProject && lastProject.data && lastProject.data.length > 0) {
+                    if (confirm("आपका पिछला अधूरा काम सेव है। क्या आप उसे वापस लोड करना चाहते हैं?")) {
+                        AppState.videoId = lastProject.videoId;
+                        AppState.sentences = lastProject.data;
+                        
+                        document.getElementById('setup-screen').classList.remove('active');
+                        document.getElementById('editor-screen').classList.add('active');
+                        
+                        initPlayer(AppState.videoId);
+                        renderSentences();
+                    }
+                }
+            } catch (dbError) {
+                console.warn("IndexedDB failed to initialize. Auto-save is disabled.", dbError);
+            }
         });
     </script>
 </body>
