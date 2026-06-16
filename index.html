@@ -123,25 +123,39 @@
 
         #toolbar {
             background: var(--surface);
-            padding: 10px;
+            padding: 6px 10px;
             display: flex;
-            flex-wrap: wrap;
             align-items: center;
-            gap: 10px;
+            justify-content: space-between;
+            gap: 6px;
             border-bottom: 1px solid var(--border);
             flex-shrink: 0;
         }
 
         .tool-btn {
-            width: auto;
-            padding: 8px 16px;
-            font-size: 14px;
+            flex: 1;
+            min-width: 0;
+            padding: 6px 4px;
+            font-size: 12px;
+            font-weight: bold;
+            border-radius: 6px;
+            margin-top: 0;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #back-to-setup-btn {
+            background-color: transparent;
+            color: var(--primary);
+            border: 1px solid var(--primary);
         }
 
         #transcript-area {
             flex-grow: 1;
             overflow-y: auto; /* Scrollable vertically */
-            padding: 10px;
+            padding: 8px;
             position: relative;
         }
 
@@ -150,47 +164,50 @@
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 8px;
-            margin-bottom: 12px;
-            padding: 12px;
+            margin-bottom: 8px;
+            padding: 8px 10px;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 4px;
         }
 
         .sentence-card.active-play {
-            border-left: 4px solid var(--primary);
-            background-color: rgba(98, 0, 238, 0.05);
+            border-left: 3px solid var(--primary);
+            background-color: rgba(187, 134, 252, 0.03);
         }
 
         .card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 12px;
+            font-size: 11px;
             color: #888;
         }
 
         .speaker-edit {
             display: inline-block;
-            min-width: 40px;
-            padding: 2px 8px;
-            background-color: var(--primary);
-            color: var(--btn-text);
+            min-width: 36px;
+            padding: 1px 6px;
+            background-color: rgba(187, 134, 252, 0.12);
+            color: var(--primary);
+            border: 1px solid rgba(187, 134, 252, 0.3);
             border-radius: 4px;
             text-align: center;
+            font-size: 11px;
+            font-weight: bold;
             cursor: text;
         }
 
         .shuddh-text-area {
             width: 100%;
             background: transparent;
-            color: var(--text-color);
+            color: #ffffff;
             border: none;
-            font-size: 18px;
+            font-size: 15px;
             resize: none;
             outline: none;
-            line-height: 1.5;
-            min-height: 40px;
+            line-height: 1.4;
+            min-height: 24px;
         }
 
         /* Confidence Colors */
@@ -239,11 +256,12 @@
         </div>
         
         <div id="toolbar">
+            <button class="tool-btn" id="back-to-setup-btn">◀ Back</button>
             <button class="tool-btn" id="play-pause-btn">Play/Pause</button>
             <button class="tool-btn" onclick="seekVideo(-3)">⏪ 3s</button>
             <button class="tool-btn" onclick="seekVideo(3)">⏩ 3s</button>
-            <button class="tool-btn" id="export-btn">Export JSON</button>
-            <span id="save-indicator" style="align-self: center; font-size: 12px;">Saved</span>
+            <button class="tool-btn" id="export-btn">Export</button>
+            <span id="save-indicator" style="align-self: center; font-size: 11px;">Saved</span>
         </div>
 
         <div id="transcript-area">
@@ -603,6 +621,15 @@
                 const state = AppState.player.getPlayerState();
                 if(state === 1) AppState.player.pauseVideo();
                 else AppState.player.playVideo();
+            });
+
+            // Back Button handling
+            document.getElementById('back-to-setup-btn').addEventListener('click', () => {
+                if (AppState.player && typeof AppState.player.pauseVideo === 'function') {
+                    AppState.player.pauseVideo();
+                }
+                document.getElementById('editor-screen').classList.remove('active');
+                document.getElementById('setup-screen').classList.add('active');
             });
 
             // --- Database & Auto Restore Logic (Executed Safely at the End) ---
