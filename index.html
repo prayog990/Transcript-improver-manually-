@@ -123,39 +123,25 @@
 
         #toolbar {
             background: var(--surface);
-            padding: 6px 10px;
+            padding: 10px;
             display: flex;
+            flex-wrap: wrap;
             align-items: center;
-            justify-content: space-between;
-            gap: 6px;
+            gap: 10px;
             border-bottom: 1px solid var(--border);
             flex-shrink: 0;
         }
 
         .tool-btn {
-            flex: 1;
-            min-width: 0;
-            padding: 6px 4px;
-            font-size: 12px;
-            font-weight: bold;
-            border-radius: 6px;
-            margin-top: 0;
-            text-align: center;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        #back-to-setup-btn {
-            background-color: transparent;
-            color: var(--primary);
-            border: 1px solid var(--primary);
+            width: auto;
+            padding: 8px 16px;
+            font-size: 14px;
         }
 
         #transcript-area {
             flex-grow: 1;
             overflow-y: auto; /* Scrollable vertically */
-            padding: 8px;
+            padding: 10px;
             position: relative;
         }
 
@@ -164,50 +150,47 @@
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: 8px;
-            margin-bottom: 8px;
-            padding: 8px 10px;
+            margin-bottom: 12px;
+            padding: 12px;
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 8px;
         }
 
         .sentence-card.active-play {
-            border-left: 3px solid var(--primary);
-            background-color: rgba(187, 134, 252, 0.03);
+            border-left: 4px solid var(--primary);
+            background-color: rgba(98, 0, 238, 0.05);
         }
 
         .card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 11px;
+            font-size: 12px;
             color: #888;
         }
 
         .speaker-edit {
             display: inline-block;
-            min-width: 36px;
-            padding: 1px 6px;
-            background-color: rgba(187, 134, 252, 0.12);
-            color: var(--primary);
-            border: 1px solid rgba(187, 134, 252, 0.3);
+            min-width: 40px;
+            padding: 2px 8px;
+            background-color: var(--primary);
+            color: var(--btn-text);
             border-radius: 4px;
             text-align: center;
-            font-size: 11px;
-            font-weight: bold;
             cursor: text;
         }
 
         .shuddh-text-area {
             width: 100%;
             background: transparent;
-            color: #ffffff;
+            color: var(--text-color);
             border: none;
-            font-size: 15px;
+            font-size: 18px;
             resize: none;
             outline: none;
-            line-height: 1.4;
-            min-height: 24px;
+            line-height: 1.5;
+            min-height: 40px;
         }
 
         /* Confidence Colors */
@@ -256,12 +239,11 @@
         </div>
         
         <div id="toolbar">
-            <button class="tool-btn" id="back-to-setup-btn">◀ Back</button>
             <button class="tool-btn" id="play-pause-btn">Play/Pause</button>
             <button class="tool-btn" onclick="seekVideo(-3)">⏪ 3s</button>
             <button class="tool-btn" onclick="seekVideo(3)">⏩ 3s</button>
-            <button class="tool-btn" id="export-btn">Export</button>
-            <span id="save-indicator" style="align-self: center; font-size: 11px;">Saved</span>
+            <button class="tool-btn" id="export-btn">Export JSON</button>
+            <span id="save-indicator" style="align-self: center; font-size: 12px;">Saved</span>
         </div>
 
         <div id="transcript-area">
@@ -517,17 +499,14 @@
                 return;
             }
 
-            // YT.ready का उपयोग करें ताकि प्लेयर ऑब्जेक्ट अधूरा न बने और सारे फंक्शन्स सही से बाइंड हों
-            window.YT.ready(() => {
-                AppState.player = new YT.Player('player', {
-                    height: '100%',
-                    width: '100%',
-                    videoId: videoId,
-                    playerVars: { 'playsinline': 1 },
-                    events: {
-                        'onReady': () => { startPlaybackTracker(); }
-                    }
-                });
+            AppState.player = new YT.Player('player', {
+                height: '100%',
+                width: '100%',
+                videoId: videoId,
+                playerVars: { 'playsinline': 1 },
+                events: {
+                    'onReady': () => { startPlaybackTracker(); }
+                }
             });
         }
 
@@ -539,8 +518,7 @@
         }
 
         function seekVideo(seconds) {
-            // सेफ्टी चेक: सुनिश्चित करें कि सीक करने वाले फंक्शन्स पूरी तरह लोड हो चुके हैं
-            if (AppState.player && typeof AppState.player.getCurrentTime === 'function' && typeof AppState.player.seekTo === 'function') {
+            if(AppState.player && AppState.player.getCurrentTime) {
                 const cTime = AppState.player.getCurrentTime();
                 AppState.player.seekTo(cTime + seconds);
             }
@@ -621,23 +599,10 @@
 
             // Play/Pause handling
             document.getElementById('play-pause-btn').addEventListener('click', () => {
-                // सेफ्टी चेक: अगर प्लेयर के फंक्शन्स अभी तक तैयार नहीं हैं, तो एरर न फेंकें और शांत रहें
-                if (!AppState.player || typeof AppState.player.getPlayerState !== 'function') return;
+                if(!AppState.player) return;
                 const state = AppState.player.getPlayerState();
-                if (state === 1 && typeof AppState.player.pauseVideo === 'function') {
-                    AppState.player.pauseVideo();
-                } else if (typeof AppState.player.playVideo === 'function') {
-                    AppState.player.playVideo();
-                }
-            });
-
-            // Back Button handling
-            document.getElementById('back-to-setup-btn').addEventListener('click', () => {
-                if (AppState.player && typeof AppState.player.pauseVideo === 'function') {
-                    AppState.player.pauseVideo();
-                }
-                document.getElementById('editor-screen').classList.remove('active');
-                document.getElementById('setup-screen').classList.add('active');
+                if(state === 1) AppState.player.pauseVideo();
+                else AppState.player.playVideo();
             });
 
             // --- Database & Auto Restore Logic (Executed Safely at the End) ---
