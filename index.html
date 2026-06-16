@@ -138,32 +138,6 @@
             font-size: 14px;
         }
 
-        .speaker-edit {
-            background: rgba(255,255,255,0.05);
-            padding: 4px 10px;
-            border-radius: 4px;
-            min-width: 120px; /* चौड़ाई और बढ़ा दी भाई जी */
-            display: inline-block;
-            outline: none;
-            border-bottom: 1px dashed var(--primary);
-            color: var(--text-color);
-            cursor: text;
-        }
-
-        .fill-btn {
-            background: rgba(187, 134, 252, 0.2);
-            border: 1px solid var(--primary);
-            color: var(--primary);
-            padding: 2px 8px;
-            font-size: 12px;
-            margin-left: 8px;
-            cursor: pointer;
-            border-radius: 4px;
-            width: auto !important;
-            display: inline-block;
-            vertical-align: middle;
-        }
-
         #transcript-area {
             flex-grow: 1;
             overflow-y: auto; /* Scrollable vertically */
@@ -233,7 +207,6 @@
             <div id="project-summary" style="display:none; text-align:left; margin: 10px 0; font-size:14px;"></div>
             
             <button id="start-btn" style="display:none;">Start Processing</button>
-            <button id="resume-btn" style="display:none; background-color: #03dac6; margin-top: 10px;">Resume Previous Work</button>
         </div>
     </div>
 
@@ -301,16 +274,6 @@
                     const tx = this.db.transaction('projects', 'readwrite');
                     tx.objectStore('projects').put({ videoId, data, updatedAt: Date.now() });
                     tx.oncomplete = () => resolve();
-                });
-            },
-            async getProject(videoId) {
-                return new Promise((resolve) => {
-                    if(!this.db) return resolve(null);
-                    const tx = this.db.transaction('projects', 'readonly');
-                    const store = tx.objectStore('projects');
-                    const req = store.get(videoId);
-                    req.onsuccess = () => resolve(req.result);
-                    req.onerror = () => resolve(null);
                 });
             }
         };
@@ -403,17 +366,13 @@
             }
             
             return sentences;
-        }containcard.innerHTML = `
-                    <div class="card-header">
-                        <span>
-                            <b class="speaker-edit" contenteditable="true" onblur="handleSpeakerEdit('${s.id}', this.innerText)">${s.speaker}</b>
-                            <button class="fill-btn" onclick="fillSpeakerDown('${s.id}')" title="Fill 'UU' below">👇 Fill</button>
-                            | ${s.id}
-                        </span>
-                        <span>⏱ ${s.sentence_start.toFixed(2)}s - ${s.sentence_end.toFixed(2)}s | <span class="${confClass}">Conf: ${(avgConf*100).toFixed(0)}%</span></span>
-                    </div>
-                    <textarea class="shuddh-text-area" oninput="autoGrow(this); handleTextEdit('${s.id}', this.value)" onfocus="pauseForEdit()">${s.shuddh_text}</textarea>
-                `;er = document.getElementById('virtual-scroller-content');
+        }
+
+        // --- 4. VIRTUALIZED RENDERING ENGINE ---
+        // For a true 50k word file, a full math-based Virtual Scroller is needed.
+        // This is a minimal requestAnimationFrame based batch renderer for safe DOM insertion.
+        function renderSentences() {
+            const container = document.getElementById('virtual-scroller-content');
             container.innerHTML = '';
             const frag = document.createDocumentFragment();
 
@@ -426,53 +385,21 @@
                 card.dataset.id = s.id;
                 card.dataset.start = s.sentence_start;
                 
-        let saveTimeout;
-        function triggerAutoSave() {
-            document.getElementById('save-indicator').innerText = 'Saving...';
-            clearTimeout(saveTimeout);
-            saveTimeout = setTimeout(async () => {
-                await DB.saveProject(AppState.videoId, AppState.sentences);
-                document.getElementById('save-indicator').innerText = 'Saved';
-            }, 300);
-        }
+                // Confidence calc
+                const avgConf = s.words.reduce((acc, w) => acc + (w.c || 1), 0) / s.words.length;
+                let confClass = 'conf-high';
+                if(avgConf < 0.85) confClass = 'conf-med';
+                if(avgConf < 0.75) confClass = 'conf-low';
+                if(avgConf < 0.50) confClass = 'conf-poor';
 
-        function handleTextEdit(id, newText) {
-            const sentence = AppState.sentences.find(s => s.id === id);
-            if(sentence) {
-                sentence.shuddh_text = newText;
-                triggerAutoSave();
-            }
-        }
-
-        function handleSpeakerEdit(id, newSpeaker) {
-            const sentence = AppState.sentences.find(s => s.id === id);
-            if(sentence) {
-                sentence.speaker = newSpeaker.trim();
-                triggerAutoSave();
-            }
-        }
-
-        function fillSpeakerDown(id) {
-            const index = AppState.sentences.findIndex(s => s.id === id);
-            if(index === -1) return;
-            
-            const speakerName = AppState.sentences[index].speaker;
-            if(speakerName === "UU") return alert("पहले एक नाम लिखें, फिर Fill दबाएँ!");
-
-            for (let i = index + 1; i < AppState.sentences.length; i++) {
-                if (AppState.sentences[i].speaker === "UU") {
-                    AppState.sentences[i].speaker = speakerName;
-                    // Live UI update for visible cards
-                    const speakerLabel = document.querySelector(`.sentence-card[data-id="${AppState.sentences[i].id}"] .speaker-edit`);
-                    if(speakerLabel) speakerLabel.innerText = speakerName;
-                } else {
-                    // अगर बीच में कोई दूसरा नाम मिला, तो रुक जाओ (Smart Stop)
-                    break;
-                }
-            }
-            triggerAutoSave();
-            alert("नीचे के खाली बॉक्स में नाम भर दिया गया है!");
-        }       
+                card.innerHTML = `
+                    <div class="card-header">
+                        <span><b class="speaker-edit" contenteditable="true">${s.speaker}</b> | ${s.id}</span>
+                        <span>⏱ ${s.sentence_start.toFixed(2)}s - ${s.sentence_end.toFixed(2)}s | <span class="${confClass}">Conf: ${(avgConf*100).toFixed(0)}%</span></span>
+                    </div>
+                    <textarea class="shuddh-text-area" oninput="autoGrow(this); handleTextEdit('${s.id}', this.value)" onfocus="pauseForEdit()">${s.shuddh_text}</textarea>
+                `;
+                
                 // Click to seek
                 card.querySelector('.card-header').addEventListener('click', () => {
                     if(AppState.player) AppState.player.seekTo(s.sentence_start);
@@ -570,36 +497,14 @@
             const urlInput = document.getElementById('yt-url');
             const fileInput = document.getElementById('json-upload');
             const startBtn = document.getElementById('start-btn');
-            const resumeBtn = document.getElementById('resume-btn');
-            const summaryDiv = document.getElementById('project-summary');
             const quickTestLink = document.getElementById('quick-test-link');
 
-            async function checkInputs() {
-                const vId = extractVideoID(urlInput.value);
-                if(vId) {
-                    const saved = await DB.getProject(vId);
-                    if(saved) {
-                        summaryDiv.innerHTML = `✅ Found saved work from ${new Date(saved.updatedAt).toLocaleString()}`;
-                        summaryDiv.style.display = 'block';
-                        resumeBtn.style.display = 'block';
-                    } else {
-                        summaryDiv.style.display = 'none';
-                        resumeBtn.style.display = 'none';
-                    }
-                }
-                
+            function checkInputs() {
                 if(urlInput.value.trim() !== '' && fileInput.files.length > 0) {
                     startBtn.style.display = 'block';
                 } else {
                     startBtn.style.display = 'none';
                 }
-            }
-
-            // Auto-load last session
-            const lastId = localStorage.getItem('lastVideoId');
-            if(lastId) {
-                urlInput.value = `https://www.youtube.com/watch?v=${lastId}`;
-                checkInputs();
             }
 
             if (quickTestLink) {
@@ -613,23 +518,7 @@
             fileInput.addEventListener('change', checkInputs);
             urlInput.addEventListener('input', checkInputs);
 
-            resumeBtn.addEventListener('click', async () => {
-                const vId = extractVideoID(urlInput.value);
-                const saved = await DB.getProject(vId);
-                if(saved) {
-                    AppState.videoId = vId;
-                    AppState.sentences = saved.data;
-                    localStorage.setItem('lastVideoId', vId);
-                    
-                    document.getElementById('setup-screen').classList.remove('active');
-                    document.getElementById('editor-screen').classList.add('active');
-                    initPlayer(vId);
-                    renderSentences();
-                }
-            });
-
             startBtn.addEventListener('click', () => {
-                localStorage.setItem('lastVideoId', extractVideoID(urlInput.value));
                 const vId = extractVideoID(urlInput.value);
                 if(!vId) return alert("Invalid YouTube URL");
                 
