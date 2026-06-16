@@ -331,6 +331,16 @@
                     };
                     request.onerror = () => resolve(null);
                 });
+            },
+            async getProject(videoId) {
+                return new Promise((resolve) => {
+                    if (!this.db) return resolve(null);
+                    const tx = this.db.transaction('projects', 'readonly');
+                    const store = tx.objectStore('projects');
+                    const request = store.get(videoId);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => resolve(null);
+                });
             }
         };
 
@@ -521,6 +531,24 @@
             return (match && match[2].length === 11) ? match[2] : null;
         }
 
+        async function checkAndLoadExistingProject(url) {
+            const vId = extractVideoID(url);
+            if (!vId) return;
+            const existingProject = await DB.getProject(vId);
+            if (existingProject && existingProject.data && existingProject.data.length > 0) {
+                if (confirm("इस वीडियो पर आपका पहले का काम सेव है। क्या आप उसे बिना JSON अपलोड किए लोड करना चाहते हैं?")) {
+                    AppState.videoId = existingProject.videoId;
+                    AppState.sentences = existingProject.data;
+                    
+                    document.getElementById('setup-screen').classList.remove('active');
+                    document.getElementById('editor-screen').classList.add('active');
+                    
+                    initPlayer(AppState.videoId);
+                    renderSentences();
+                }
+            }
+        }
+
         function onYouTubeIframeAPIReady() {
             // Fired globally when YT API loads
         }
@@ -600,11 +628,15 @@
                     e.preventDefault();
                     urlInput.value = quickTestLink.innerText;
                     checkInputs();
+                    checkAndLoadExistingProject(urlInput.value);
                 });
             }
 
             fileInput.addEventListener('change', checkInputs);
-            urlInput.addEventListener('input', checkInputs);
+            urlInput.addEventListener('input', () => {
+                checkInputs();
+                checkAndLoadExistingProject(urlInput.value);
+            });
 
             startBtn.addEventListener('click', () => {
                 const vId = extractVideoID(urlInput.value);
