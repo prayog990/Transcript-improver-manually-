@@ -539,6 +539,8 @@
                 if (confirm("इस वीडियो पर आपका पहले का काम सेव है। क्या आप उसे बिना JSON अपलोड किए लोड करना चाहते हैं?")) {
                     AppState.videoId = existingProject.videoId;
                     AppState.sentences = existingProject.data;
+                    // पुराना प्रोजेक्ट लोड हुआ है, इसलिए ऑटो-लोड रोकने वाली बंदिश को साफ़ करें
+                    sessionStorage.removeItem('preventAutoLoad');
                     
                     document.getElementById('setup-screen').classList.remove('active');
                     document.getElementById('editor-screen').classList.add('active');
@@ -646,6 +648,9 @@
                 if(!file) return alert("Please select a JSON file");
 
                 AppState.videoId = vId;
+                // नया प्रोजेक्ट शुरू हो रहा है, इसलिए ऑटो-लोड रोकने वाली बंदिश को साफ़ करें
+                sessionStorage.removeItem('preventAutoLoad');
+                
                 document.getElementById('setup-screen').classList.remove('active');
                 document.getElementById('processing-screen').classList.add('active');
                 updateProcessLog("Reading File...");
@@ -679,6 +684,8 @@
                 if (AppState.player && typeof AppState.player.pauseVideo === 'function') {
                     AppState.player.pauseVideo();
                 }
+                // यूजर खुद सेटअप स्क्रीन पर गया है, इसलिए ऑटो-लोड को रोकें
+                sessionStorage.setItem('preventAutoLoad', 'true');
                 document.getElementById('editor-screen').classList.remove('active');
                 document.getElementById('setup-screen').classList.add('active');
             });
@@ -699,9 +706,12 @@
             // --- Database & Auto Restore Logic (Executed Safely inside DOMContentLoaded) ---
             try {
                 await DB.init();
-                const lastProject = await DB.loadLastProject();
-                if (lastProject && lastProject.data && lastProject.data.length > 0) {
-                    if (confirm("आपका पिछला अधूरा काम सेव है। क्या आप उसे वापस लोड करना चाहते हैं?")) {
+                const preventAutoLoad = sessionStorage.getItem('preventAutoLoad') === 'true';
+                
+                // अगर यूजर खुद बैक नहीं गया है, तो बिना पूछे डायरेक्ट आख़िरी काम लोड करो
+                if (!preventAutoLoad) {
+                    const lastProject = await DB.loadLastProject();
+                    if (lastProject && lastProject.data && lastProject.data.length > 0) {
                         AppState.videoId = lastProject.videoId;
                         AppState.sentences = lastProject.data;
                         
