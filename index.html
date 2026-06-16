@@ -458,7 +458,9 @@
                 
                 // Click to seek
                 card.querySelector('.card-header').addEventListener('click', () => {
-                    if(AppState.player) AppState.player.seekTo(s.sentence_start);
+                    if (AppState.player && typeof AppState.player.seekTo === 'function') {
+                        AppState.player.seekTo(s.sentence_start);
+                    }
                 });
 
                 frag.appendChild(card);
@@ -499,8 +501,12 @@
         }
 
         function pauseForEdit() {
-            if(AppState.player && AppState.player.getPlayerState() === 1) { // 1 = playing
-                AppState.player.pauseVideo();
+            if (AppState.player && 
+                typeof AppState.player.getPlayerState === 'function' && 
+                typeof AppState.player.pauseVideo === 'function') {
+                if (AppState.player.getPlayerState() === 1) { // 1 = playing
+                    AppState.player.pauseVideo();
+                }
             }
         }
 
@@ -526,6 +532,12 @@
                 return;
             }
 
+            // पुराने प्लेयर को रीसेट करके फ्रेश नया Div इंजेक्ट करें (डबल-इनिशियलाइजेशन बग से बचाव)
+            const container = document.getElementById('video-container');
+            if (container) {
+                container.innerHTML = '<div id="player"></div>';
+            }
+
             AppState.player = new YT.Player('player', {
                 height: '100%',
                 width: '100%',
@@ -539,13 +551,19 @@
 
         function startPlaybackTracker() {
             setInterval(() => {
-                if(!AppState.player || AppState.player.getPlayerState() !== 1) return;
-                // Playback tracking logic can be expanded here
+                if(!AppState.player) return;
+                // प्लेयर का स्टेटस सेफ-चेक करें
+                if (typeof AppState.player.getPlayerState === 'function') {
+                    if (AppState.player.getPlayerState() !== 1) return;
+                    // Playback tracking logic can be expanded here
+                }
             }, 500);
         }
 
         function seekVideo(seconds) {
-            if(AppState.player && AppState.player.getCurrentTime) {
+            if(AppState.player && 
+               typeof AppState.player.getCurrentTime === 'function' && 
+               typeof AppState.player.seekTo === 'function') {
                 const cTime = AppState.player.getCurrentTime();
                 AppState.player.seekTo(cTime + seconds);
             }
@@ -636,9 +654,14 @@
             // Play/Pause handling
             document.getElementById('play-pause-btn').addEventListener('click', () => {
                 if(!AppState.player) return;
-                const state = AppState.player.getPlayerState();
-                if(state === 1) AppState.player.pauseVideo();
-                else AppState.player.playVideo();
+                if (typeof AppState.player.getPlayerState === 'function' && 
+                    typeof AppState.player.pauseVideo === 'function' && 
+                    typeof AppState.player.playVideo === 'function') {
+                    
+                    const state = AppState.player.getPlayerState();
+                    if(state === 1) AppState.player.pauseVideo();
+                    else AppState.player.playVideo();
+                }
             });
 
             // --- Database & Auto Restore Logic (Executed Safely inside DOMContentLoaded) ---
