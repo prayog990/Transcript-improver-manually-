@@ -112,7 +112,7 @@
         button:active { opacity: 0.8; }
 
         /* Main Editor Layout */
-        #editor-screen { padding: 0; }
+        #editor-screen { padding: 0; position: relative; }
         
         #video-container {
             width: 100%;
@@ -123,19 +123,43 @@
 
         #toolbar {
             background: var(--surface);
-            padding: 10px;
+            padding: 6px;
             display: flex;
-            flex-wrap: wrap;
+            flex-wrap: nowrap; /* एक लाइन में लॉक */
             align-items: center;
-            gap: 10px;
+            justify-content: space-between;
+            gap: 6px;
             border-bottom: 1px solid var(--border);
             flex-shrink: 0;
         }
 
         .tool-btn {
-            width: auto;
-            padding: 8px 16px;
-            font-size: 14px;
+            flex: 1;
+            min-width: 0;
+            padding: 8px 2px;
+            font-size: 11px;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: center;
+            margin-top: 0; /* सामान्य बटन मार्जिन को रीसेट किया */
+            width: auto; /* सामान्य बटन विड्थ को रीसेट किया */
+            min-height: unset; /* मोबाइल के लिए बटन की ऊंचाई सही की */
+        }
+
+        #save-indicator {
+            position: absolute;
+            bottom: 20px; /* नीचे कोने में तैरता हुआ */
+            right: 15px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #4caf50;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            z-index: 100;
+            pointer-events: none; /* इसके नीचे की लिस्ट पर क्लिक या स्क्रॉल हो सके */
         }
 
         #transcript-area {
@@ -234,16 +258,19 @@
     </div>
 
     <div id="editor-screen" class="screen">
+        <!-- Saved इंडिकेटर अब यहाँ कोने में तैरता हुआ रहेगा -->
+        <span id="save-indicator">Saved</span>
+        
         <div id="video-container">
             <div id="player"></div>
         </div>
         
         <div id="toolbar">
-            <button class="tool-btn" id="play-pause-btn">Play/Pause</button>
+            <button class="tool-btn" id="back-btn">⬅️ Back</button>
+            <button class="tool-btn" id="play-pause-btn">⏯️ Play</button>
             <button class="tool-btn" onclick="seekVideo(-3)">⏪ 3s</button>
             <button class="tool-btn" onclick="seekVideo(3)">⏩ 3s</button>
-            <button class="tool-btn" id="export-btn">Export JSON</button>
-            <span id="save-indicator" style="align-self: center; font-size: 12px;">Saved</span>
+            <button class="tool-btn" id="export-btn">📤 Export</button>
         </div>
 
         <div id="transcript-area">
@@ -597,6 +624,15 @@
                 reader.readAsText(file);
             });
 
+ // Back button handling
+            document.getElementById('back-btn').addEventListener('click', () => {
+                if (AppState.player && typeof AppState.player.pauseVideo === 'function') {
+                    AppState.player.pauseVideo();
+                }
+                document.getElementById('editor-screen').classList.remove('active');
+                document.getElementById('setup-screen').classList.add('active');
+            });
+
             // Play/Pause handling
             document.getElementById('play-pause-btn').addEventListener('click', () => {
                 if(!AppState.player) return;
@@ -605,7 +641,7 @@
                 else AppState.player.playVideo();
             });
 
-            // --- Database & Auto Restore Logic (Executed Safely at the End) ---
+            // --- Database & Auto Restore Logic (Executed Safely inside DOMContentLoaded) ---
             try {
                 await DB.init();
                 const lastProject = await DB.loadLastProject();
