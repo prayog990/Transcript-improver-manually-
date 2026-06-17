@@ -9,6 +9,7 @@
             --bg-color: #121212;
             --text-color: #e0e0e0;
             --primary: #bb86fc;
+            --primary-rgb: 187,134,252;
             --surface: #1e1e1e;
             --error: #cf6679;
             --border: #333;
@@ -20,6 +21,7 @@
             --bg-color: #f5f5f5;
             --text-color: #212121;
             --primary: #6200ee;
+            --primary-rgb: 98,0,238;
             --surface: #ffffff;
             --error: #b00020;
             --border: #e0e0e0;
@@ -57,8 +59,8 @@
         }
 
         /* App Flow Layouts */
-        #setup-screen { justify-content: center; align-items: center; text-align: center; }
-        
+        #setup-screen { justify-content: center; align-items: center; text-align: center; overflow-y: auto; }
+
         /* Progress Bar Styles */
         .progress-container {
             width: 100%;
@@ -111,14 +113,58 @@
 
         button:active { opacity: 0.8; }
 
+        /* Resume / पुराना काम मिलने वाला कार्ड */
+        .resume-prompt {
+            margin-top: 16px;
+            background: rgba(76, 175, 80, 0.08);
+            border: 1px dashed #4caf50;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: left;
+            font-size: 14px;
+        }
+        .resume-prompt .resume-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .resume-prompt button { margin-top: 0; }
+        .resume-prompt .secondary-btn { background: var(--border); color: var(--text-color); }
+
         /* Main Editor Layout */
         #editor-screen { padding: 0; position: relative; }
-        
+
         #video-container {
             width: 100%;
             aspect-ratio: 16/9; /* Fixed ratio */
             background: #000;
             flex-shrink: 0;
+        }
+
+        /* नया: वीडियो स्क्रबर (seek bar) - असली प्लेयर जैसा फीडबैक देने के लिए */
+        #seek-bar-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--surface);
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        #seek-range {
+            flex: 1;
+            accent-color: var(--primary);
+            height: 24px;
+            cursor: pointer;
+        }
+
+        #time-label {
+            font-size: 11px;
+            color: #888;
+            white-space: nowrap;
+            min-width: 78px;
+            text-align: right;
         }
 
         #toolbar {
@@ -169,6 +215,46 @@
             position: relative;
         }
 
+        /* नया: Follow/Auto-scroll टॉगल - लिस्ट के टॉप पर चिपका हुआ (sticky) */
+        .follow-bar {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            display: flex;
+            justify-content: flex-end;
+            padding-bottom: 8px;
+            pointer-events: none; /* खाली जगह से क्लिक नीचे की लिस्ट तक जाए */
+        }
+
+        .follow-pill {
+            pointer-events: auto;
+            width: auto;
+            min-height: unset;
+            background: var(--surface);
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            padding: 5px 12px;
+            margin: 0;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+
+        .follow-pill.follow-off {
+            border-color: #ff9800;
+            color: #ff9800;
+        }
+
+        #render-progress-footer {
+            display: none;
+            text-align: center;
+            font-size: 12px;
+            color: #888;
+            padding: 14px 0 6px;
+        }
+
         /* Sentence Card */
         .sentence-card {
             background: var(--surface);
@@ -179,11 +265,13 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
+            scroll-margin: 70px; /* sticky follow-bar के नीचे ना छुप जाए */
         }
 
         .sentence-card.active-play {
             border-left: 4px solid var(--primary);
-            background-color: rgba(98, 0, 238, 0.05);
+            background-color: rgba(var(--primary-rgb), 0.12);
+            box-shadow: 0 0 0 1px rgba(var(--primary-rgb), 0.35) inset;
         }
 
         .card-header {
@@ -192,6 +280,7 @@
             align-items: center;
             font-size: 12px;
             color: #888;
+            cursor: pointer;
         }
 
         .speaker-edit {
@@ -223,6 +312,19 @@
         .conf-low { color: #ff9800; }
         .conf-poor { color: var(--error); }
 
+        .player-error-box {
+            color: #fff;
+            text-align: center;
+            padding: 20px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+        .player-error-box button { width: auto; padding: 10px 20px; }
+
     </style>
 </head>
 <body>
@@ -231,17 +333,24 @@
         <div class="card-panel">
             <h2>Transcript Editor</h2>
             <p>Shuddh Hindi Refinement Tool</p>
-            
+
             <input type="text" id="yt-url" placeholder="Paste YouTube URL">
             <input type="file" id="json-upload" accept=".json">
-            
+
             <div style="margin-top: 16px; background: rgba(187, 134, 252, 0.1); padding: 12px; border-radius: 8px; border: 1px dashed var(--primary); font-size: 14px; text-align: left;">
                 <span style="color: #888;">Quick Test Link (Click to fill):</span><br>
                 <a href="#" id="quick-test-link" style="color: var(--primary); text-decoration: none; word-break: break-all; font-weight: bold; display: inline-block; margin-top: 5px;">https://youtu.be/BJKJtB_bAfQ?si=f_wyXsx6xXqdzcrl</a>
             </div>
 
-            <div id="project-summary" style="display:none; text-align:left; margin: 10px 0; font-size:14px;"></div>
-            
+            <!-- नया: confirm() पॉपअप की जगह यह स्मूद inline resume कार्ड (बार-बार पॉपअप आने वाली बग यहीं ठीक हुई) -->
+            <div id="project-summary" class="resume-prompt" style="display:none;">
+                <p>🔄 इस वीडियो पर पुराना काम मिला — <b id="resume-count">0</b> वाक्य सेव हैं।</p>
+                <div class="resume-actions">
+                    <button id="resume-btn">जारी रखें ▶️</button>
+                    <button id="discard-resume-btn" class="secondary-btn">नज़रअंदाज़ करें</button>
+                </div>
+            </div>
+
             <button id="start-btn" style="display:none;">Start Processing</button>
         </div>
     </div>
@@ -260,21 +369,28 @@
     <div id="editor-screen" class="screen">
         <!-- Saved इंडिकेटर अब यहाँ कोने में तैरता हुआ रहेगा -->
         <span id="save-indicator">Saved</span>
-        
+
         <div id="video-container">
             <div id="player"></div>
         </div>
-        
+
+        <div id="seek-bar-wrap">
+            <input type="range" id="seek-range" min="0" max="100" value="0" step="0.1">
+            <span id="time-label">0:00 / 0:00</span>
+        </div>
+
         <div id="toolbar">
             <button class="tool-btn" id="back-btn">⬅️ Back</button>
-            <button class="tool-btn" id="play-pause-btn">⏯️ Play</button>
-            <button class="tool-btn" onclick="seekVideo(-3)">⏪ 3s</button>
-            <button class="tool-btn" onclick="seekVideo(3)">⏩ 3s</button>
+            <button class="tool-btn" id="play-pause-btn">▶️ Play</button>
+            <button class="tool-btn" id="seek-back-btn">⏪ 3s</button>
+            <button class="tool-btn" id="seek-fwd-btn">⏩ 3s</button>
             <button class="tool-btn" id="export-btn">📤 Export</button>
         </div>
 
         <div id="transcript-area">
+            <div class="follow-bar"><button id="follow-toggle" class="follow-pill">🎯 Follow: ON</button></div>
             <div id="virtual-scroller-content"></div>
+            <div id="render-progress-footer"></div>
         </div>
     </div>
 
@@ -284,10 +400,14 @@
         const AppState = {
             videoId: null,
             sentences: [],
+            sentenceById: new Map(),   // id -> array index (O(1) lookup, बड़े transcript में lag रोकने के लिए)
+            cardElements: new Map(),   // id -> DOM node (O(1) lookup, querySelector की जगह)
             isDirty: false,
-            isPlaying: false,
             player: null,
-            history: [] // Undo/Redo Engine basis
+            trackerInterval: null,     // सिर्फ ek interval हमेशा चले, double-leak ना हो
+            activeSentenceIndex: -1,
+            isFollowing: true,         // auto-scroll चालू/बंद
+            isScrubbing: false         // seek-bar drag के दौरान tracker उसमें टांग ना अड़ाए
         };
 
         // --- 2. STORAGE ENGINE (IndexedDB) ---
@@ -322,7 +442,7 @@
                     request.onsuccess = () => {
                         const projects = request.result;
                         if (projects && projects.length > 0) {
-                            // सबसे ताज़ा (latest) प्रोजेक्ट को छांटें
+                            // सबसे ताज़ा (latest) प्रोजेक्ट को छांटें
                             projects.sort((a, b) => b.updatedAt - a.updatedAt);
                             resolve(projects[0]);
                         } else {
@@ -344,16 +464,15 @@
             }
         };
 
- // --- 3. SENTENCE GROUPING ENGINE ---
+        // --- 3. SENTENCE GROUPING ENGINE (असली logic वही है, बदला नहीं गया) ---
         async function processRawJSON(rawWords) {
             updateProcessLog("Grouping Sentences...");
             const sentences = [];
             let currentSentence = null;
             let sentenceCounter = 1;
-            
+
             const punctuationMarkers = ['।', '?', '!'];
-            
-            // नया लॉजिक: चेक करें कि JSON का डेटा कहाँ है
+
             let dataArray = [];
             if (rawWords && rawWords.results && Array.isArray(rawWords.results)) {
                 dataArray = rawWords.results;
@@ -366,17 +485,16 @@
 
             const totalWords = dataArray.length;
             const chunkSize = 2000;
-            
+
             const progressBar = document.getElementById('progress-bar');
             const progressText = document.getElementById('progress-text');
 
             for (let i = 0; i < totalWords; i += chunkSize) {
                 const chunk = dataArray.slice(i, i + chunkSize);
-                
+
                 chunk.forEach((item, chunkIndex) => {
                     const index = i + chunkIndex;
-                    
-                    // नए और पुराने दोनों JSON फॉर्मेट को सपोर्ट करने के लिए:
+
                     let wordText = "";
                     let conf = 1;
                     if (item.alternatives && item.alternatives.length > 0) {
@@ -386,7 +504,7 @@
                         wordText = item.w || item.word || "";
                         conf = item.c !== undefined ? item.c : 1;
                     }
-                    
+
                     let startTime = item.start_time !== undefined ? item.start_time : (item.s || 0);
                     let endTime = item.end_time !== undefined ? item.end_time : (item.e || startTime);
                     let isEos = item.is_eos === true;
@@ -403,15 +521,13 @@
 
                     currentSentence.words.push({ c: conf });
                     currentSentence.sentence_end = endTime;
-                    
-                    // अगर विराम चिह्न पहले वाले शब्द से जुड़ता है (space न आए)
+
                     if (item.attaches_to === "previous") {
-                         currentSentence.shuddh_text = currentSentence.shuddh_text.trim() + wordText + " ";
+                        currentSentence.shuddh_text = currentSentence.shuddh_text.trim() + wordText + " ";
                     } else {
-                         currentSentence.shuddh_text += wordText + " ";
+                        currentSentence.shuddh_text += wordText + " ";
                     }
 
-                    // वाक्य खत्म होने का लॉजिक
                     const isPunctuation = punctuationMarkers.some(p => wordText.includes(p)) || isEos;
                     const nextItem = dataArray[index + 1];
                     let nextStartTime = nextItem ? (nextItem.start_time !== undefined ? nextItem.start_time : (nextItem.s || 0)) : null;
@@ -430,70 +546,202 @@
 
                 await new Promise(resolve => setTimeout(resolve, 0));
             }
-            
+
             return sentences;
         }
 
-        // --- 4. VIRTUALIZED RENDERING ENGINE ---
-        // For a true 50k word file, a full math-based Virtual Scroller is needed.
-        // This is a minimal requestAnimationFrame based batch renderer for safe DOM insertion.
+        function buildSentenceIndex() {
+            AppState.sentenceById = new Map();
+            AppState.sentences.forEach((s, i) => AppState.sentenceById.set(s.id, i));
+        }
+
+        // --- 4. RENDERING ENGINE ---
+        // पुरानी बग: सिर्फ पहले 100 sentence render होते थे, बाकी पूरी ट्रांसक्रिप्ट गायब रहती थी।
+        // अब: पहला बैच फौरन दिखता है, बाकी background में बैचों में लोड होते रहते हैं जब तक सब ना आ जाए।
+        // requestIdleCallback हर browser (खासकर iOS Safari) में नहीं है, इसलिए setTimeout fallback रखा है।
+        const idle = window.requestIdleCallback || function (cb) { return setTimeout(() => cb({ timeRemaining: () => 0 }), 16); };
+        const RENDER_BATCH = 120;
+        let renderCursor = 0;
+
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        }
+
+        function createSentenceCard(s) {
+            const card = document.createElement('div');
+            card.className = 'sentence-card';
+            card.dataset.id = s.id;
+
+            const avgConf = s.words.length ? s.words.reduce((acc, w) => acc + (w.c || 1), 0) / s.words.length : 1;
+            let confClass = 'conf-high';
+            if (avgConf < 0.85) confClass = 'conf-med';
+            if (avgConf < 0.75) confClass = 'conf-low';
+            if (avgConf < 0.50) confClass = 'conf-poor';
+
+            const header = document.createElement('div');
+            header.className = 'card-header';
+            header.innerHTML = `
+                <span><b class="speaker-edit" contenteditable="true">${escapeHtml(s.speaker)}</b> | ${s.id}</span>
+                <span>⏱ ${s.sentence_start.toFixed(2)}s - ${s.sentence_end.toFixed(2)}s | <span class="${confClass}">Conf: ${(avgConf * 100).toFixed(0)}%</span></span>
+            `;
+
+            // textarea.value से text भरा जाता है (innerHTML से नहीं) — वरना & < > वाले शब्द टेक्स्ट तोड़ देते थे
+            const textarea = document.createElement('textarea');
+            textarea.className = 'shuddh-text-area';
+            textarea.value = s.shuddh_text;
+
+            card.appendChild(header);
+            card.appendChild(textarea);
+
+            AppState.cardElements.set(s.id, card);
+            return card;
+        }
+
         function renderSentences() {
             const container = document.getElementById('virtual-scroller-content');
             container.innerHTML = '';
-            const frag = document.createDocumentFragment();
-
-            // Render first 100 for immediate load, lazy load rest (simplified virtualization)
-            const renderBatch = AppState.sentences.slice(0, 100); 
-
-            renderBatch.forEach((s) => {
-                const card = document.createElement('div');
-                card.className = 'sentence-card';
-                card.dataset.id = s.id;
-                card.dataset.start = s.sentence_start;
-                
-                // Confidence calc
-                const avgConf = s.words.reduce((acc, w) => acc + (w.c || 1), 0) / s.words.length;
-                let confClass = 'conf-high';
-                if(avgConf < 0.85) confClass = 'conf-med';
-                if(avgConf < 0.75) confClass = 'conf-low';
-                if(avgConf < 0.50) confClass = 'conf-poor';
-
-                card.innerHTML = `
-                    <div class="card-header">
-                        <span><b class="speaker-edit" contenteditable="true" onblur="handleSpeakerEdit('${s.id}', this.innerText)">${s.speaker}</b> | ${s.id}</span>
-                        <span>⏱ ${s.sentence_start.toFixed(2)}s - ${s.sentence_end.toFixed(2)}s | <span class="${confClass}">Conf: ${(avgConf*100).toFixed(0)}%</span></span>
-                    </div>
-                    <textarea class="shuddh-text-area" oninput="autoGrow(this); handleTextEdit('${s.id}', this.value)" onfocus="pauseForEdit()">${s.shuddh_text}</textarea>
-                `;
-                
-                // Click to seek
-                card.querySelector('.card-header').addEventListener('click', () => {
-                    if (AppState.player && typeof AppState.player.seekTo === 'function') {
-                        AppState.player.seekTo(s.sentence_start);
-                    }
-                });
-
-                frag.appendChild(card);
-            });
-            container.appendChild(frag);
+            AppState.cardElements = new Map();
+            renderCursor = 0;
+            renderNextBatch();
         }
 
-        // --- 5. UI INTERACTIONS & AUTOSAVE ---
+        function renderNextBatch() {
+            const total = AppState.sentences.length;
+            if (renderCursor >= total) {
+                updateRenderFooter();
+                return;
+            }
+            const container = document.getElementById('virtual-scroller-content');
+            const frag = document.createDocumentFragment();
+            const end = Math.min(renderCursor + RENDER_BATCH, total);
+            for (let i = renderCursor; i < end; i++) {
+                frag.appendChild(createSentenceCard(AppState.sentences[i]));
+            }
+            container.appendChild(frag);
+            renderCursor = end;
+            updateRenderFooter();
+            if (renderCursor < total) {
+                idle(renderNextBatch);
+            }
+        }
+
+        // playback या seek किसी ऐसे sentence पर पहुंच जाए जो अभी render नहीं हुआ — तो उसे तुरंत आगे तक render कर दो
+        function ensureRenderedThrough(index) {
+            const total = AppState.sentences.length;
+            if (index < renderCursor || index >= total) return;
+            const container = document.getElementById('virtual-scroller-content');
+            const frag = document.createDocumentFragment();
+            const target = index + 1;
+            for (let i = renderCursor; i < target; i++) {
+                frag.appendChild(createSentenceCard(AppState.sentences[i]));
+            }
+            container.appendChild(frag);
+            renderCursor = target;
+            updateRenderFooter();
+        }
+
+        function updateRenderFooter() {
+            const footer = document.getElementById('render-progress-footer');
+            const total = AppState.sentences.length;
+            if (renderCursor >= total) {
+                footer.style.display = 'none';
+            } else {
+                footer.style.display = 'block';
+                footer.innerText = `बाकी लाइनें लोड हो रही हैं... (${renderCursor}/${total})`;
+            }
+        }
+
+        // --- 5. SYNC ENGINE: वीडियो के साथ सही sentence हाईलाइट + ऑटो-स्क्रॉल ---
+        let isAutoScrolling = false;
+        let autoScrollTimer = null;
+
+        function findActiveIndex(time) {
+            const arr = AppState.sentences;
+            let lo = 0, hi = arr.length - 1, ans = -1;
+            while (lo <= hi) {
+                const mid = (lo + hi) >> 1;
+                if (arr[mid].sentence_start <= time) { ans = mid; lo = mid + 1; }
+                else { hi = mid - 1; }
+            }
+            return ans;
+        }
+
+        function setActiveSentence(idx) {
+            if (idx === AppState.activeSentenceIndex) return;
+
+            if (AppState.activeSentenceIndex >= 0) {
+                const oldS = AppState.sentences[AppState.activeSentenceIndex];
+                const oldEl = oldS ? AppState.cardElements.get(oldS.id) : null;
+                if (oldEl) oldEl.classList.remove('active-play');
+            }
+
+            AppState.activeSentenceIndex = idx;
+            if (idx < 0) return;
+
+            ensureRenderedThrough(idx);
+            const s = AppState.sentences[idx];
+            const el = AppState.cardElements.get(s.id);
+            if (el) {
+                el.classList.add('active-play');
+                if (AppState.isFollowing) scrollCardIntoView(el);
+            }
+        }
+
+        function scrollCardIntoView(el) {
+            isAutoScrolling = true;
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            clearTimeout(autoScrollTimer);
+            autoScrollTimer = setTimeout(() => { isAutoScrolling = false; }, 700);
+        }
+
+        function updateFollowUI() {
+            const btn = document.getElementById('follow-toggle');
+            if (AppState.isFollowing) {
+                btn.textContent = '🎯 Follow: ON';
+                btn.classList.remove('follow-off');
+            } else {
+                btn.textContent = '⤓ Resume Follow';
+                btn.classList.add('follow-off');
+            }
+        }
+
+        function trackPlayback() {
+            if (!AppState.player || typeof AppState.player.getCurrentTime !== 'function') return;
+            const t = AppState.player.getCurrentTime();
+            updateSeekBar(t);
+            setActiveSentence(findActiveIndex(t));
+        }
+
+        function seekAndPlay(time) {
+            if (!AppState.player || typeof AppState.player.seekTo !== 'function') return;
+            AppState.player.seekTo(time, true);
+            if (typeof AppState.player.playVideo === 'function') AppState.player.playVideo();
+            setActiveSentence(findActiveIndex(time)); // तुरंत हाईलाइट, अगले poll का इंतज़ार नहीं
+        }
+
+        function seekVideo(seconds) {
+            if (AppState.player &&
+                typeof AppState.player.getCurrentTime === 'function' &&
+                typeof AppState.player.seekTo === 'function') {
+                const cTime = AppState.player.getCurrentTime();
+                AppState.player.seekTo(cTime + seconds, true);
+            }
+        }
+
+        // --- 6. UI INTERACTIONS & AUTOSAVE (event delegation - हजारों cards पर भी हल्का) ---
         let saveTimeout;
         function handleTextEdit(id, newText) {
-            const sentence = AppState.sentences.find(s => s.id === id);
-            if(sentence) {
-                sentence.shuddh_text = newText;
-                triggerAutoSave();
-            }
+            const idx = AppState.sentenceById.get(id);
+            if (idx === undefined) return;
+            AppState.sentences[idx].shuddh_text = newText;
+            triggerAutoSave();
         }
 
         function handleSpeakerEdit(id, newSpeaker) {
-            const sentence = AppState.sentences.find(s => s.id === id);
-            if(sentence) {
-                sentence.speaker = newSpeaker.trim() || "UU";
-                triggerAutoSave();
-            }
+            const idx = AppState.sentenceById.get(id);
+            if (idx === undefined) return;
+            AppState.sentences[idx].speaker = newSpeaker.trim() || "UU";
+            triggerAutoSave();
         }
 
         function triggerAutoSave() {
@@ -502,17 +750,17 @@
             saveTimeout = setTimeout(async () => {
                 await DB.saveProject(AppState.videoId, AppState.sentences);
                 document.getElementById('save-indicator').innerText = 'Saved';
-            }, 300);
+            }, 500);
         }
 
         function autoGrow(element) {
             element.style.height = "5px";
-            element.style.height = (element.scrollHeight)+"px";
+            element.style.height = (element.scrollHeight) + "px";
         }
 
         function pauseForEdit() {
-            if (AppState.player && 
-                typeof AppState.player.getPlayerState === 'function' && 
+            if (AppState.player &&
+                typeof AppState.player.getPlayerState === 'function' &&
                 typeof AppState.player.pauseVideo === 'function') {
                 if (AppState.player.getPlayerState() === 1) { // 1 = playing
                     AppState.player.pauseVideo();
@@ -524,45 +772,81 @@
             document.getElementById('process-log').innerText = msg;
         }
 
-        // --- 6. YOUTUBE API SYNC ---
+        function setupTranscriptDelegation() {
+            const container = document.getElementById('virtual-scroller-content');
+
+            container.addEventListener('click', (e) => {
+                const header = e.target.closest('.card-header');
+                if (!header) return;
+                if (e.target.closest('.speaker-edit')) return; // speaker edit करते वक्त seek ना हो
+                const card = header.closest('.sentence-card');
+                const idx = AppState.sentenceById.get(card.dataset.id);
+                if (idx === undefined) return;
+                seekAndPlay(AppState.sentences[idx].sentence_start);
+            });
+
+            container.addEventListener('input', (e) => {
+                if (!e.target.classList.contains('shuddh-text-area')) return;
+                autoGrow(e.target);
+                const card = e.target.closest('.sentence-card');
+                handleTextEdit(card.dataset.id, e.target.value);
+            });
+
+            container.addEventListener('focusin', (e) => {
+                if (e.target.classList.contains('shuddh-text-area')) pauseForEdit();
+            });
+
+            container.addEventListener('focusout', (e) => {
+                if (!e.target.classList.contains('speaker-edit')) return;
+                const card = e.target.closest('.sentence-card');
+                handleSpeakerEdit(card.dataset.id, e.target.innerText);
+            });
+        }
+
+        // मैनुअल स्क्रॉल करते ही Follow अपने-आप बंद हो जाए, ताकि पढ़ते वक्त वीडियो वापस ना खींचे
+        function setupManualScrollDetection() {
+            document.getElementById('transcript-area').addEventListener('scroll', () => {
+                if (isAutoScrolling) return;
+                if (AppState.isFollowing) {
+                    AppState.isFollowing = false;
+                    updateFollowUI();
+                }
+            });
+        }
+
+        // --- 7. YOUTUBE PLAYER ---
         function extractVideoID(url) {
             const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
             const match = url.match(regExp);
             return (match && match[2].length === 11) ? match[2] : null;
         }
 
-        async function checkAndLoadExistingProject(url) {
-            const vId = extractVideoID(url);
-            if (!vId) return;
-            const existingProject = await DB.getProject(vId);
-            if (existingProject && existingProject.data && existingProject.data.length > 0) {
-                if (confirm("इस वीडियो पर आपका पहले का काम सेव है। क्या आप उसे बिना JSON अपलोड किए लोड करना चाहते हैं?")) {
-                    AppState.videoId = existingProject.videoId;
-                    AppState.sentences = existingProject.data;
-                    // पुराना प्रोजेक्ट लोड हुआ है, इसलिए ऑटो-लोड रोकने वाली बंदिश को साफ़ करें
-                    sessionStorage.removeItem('preventAutoLoad');
-                    
-                    document.getElementById('setup-screen').classList.remove('active');
-                    document.getElementById('editor-screen').classList.add('active');
-                    
-                    initPlayer(AppState.videoId);
-                    renderSentences();
-                }
-            }
-        }
-
         function onYouTubeIframeAPIReady() {
-            // Fired globally when YT API loads
+            // YT API ग्लोबली लोड होने पर fire होता है (हम वैसे भी poll करते हैं, सिर्फ placeholder)
         }
 
-        function initPlayer(videoId) {
-            // अगर YouTube API अभी लोड नहीं हुआ है, तो 200ms इंतज़ार करके दोबारा कोशिश करो
+        function initPlayer(videoId, attempt) {
+            attempt = attempt || 0;
+
             if (typeof YT === 'undefined' || typeof YT.Player === 'undefined') {
-                setTimeout(() => initPlayer(videoId), 200);
+                if (attempt > 50) { // ~10 सेकंड कोशिश के बाद साफ़ error दिखाओ, हमेशा के लिए चुपचाप अटका ना रहे
+                    showPlayerError();
+                    return;
+                }
+                setTimeout(() => initPlayer(videoId, attempt + 1), 200);
                 return;
             }
 
-            // पुराने प्लेयर को रीसेट करके फ्रेश नया Div इंजेक्ट करें (डबल-इनिशियलाइजेशन बग से बचाव)
+            // पुराना interval/स्टेट साफ़ करें (डबल-इनिशियलाइजेशन / leaked interval बग से बचाव)
+            if (AppState.trackerInterval) {
+                clearInterval(AppState.trackerInterval);
+                AppState.trackerInterval = null;
+            }
+            AppState.activeSentenceIndex = -1;
+            AppState.isFollowing = true;
+            AppState.isScrubbing = false;
+            updateFollowUI();
+
             const container = document.getElementById('video-container');
             if (container) {
                 container.innerHTML = '<div id="player"></div>';
@@ -574,55 +858,153 @@
                 videoId: videoId,
                 playerVars: { 'playsinline': 1 },
                 events: {
-                    'onReady': () => { startPlaybackTracker(); }
+                    'onReady': onPlayerReady,
+                    'onStateChange': onPlayerStateChange
                 }
             });
         }
 
-        function startPlaybackTracker() {
-            setInterval(() => {
-                if(!AppState.player) return;
-                // प्लेयर का स्टेटस सेफ-चेक करें
-                if (typeof AppState.player.getPlayerState === 'function') {
-                    if (AppState.player.getPlayerState() !== 1) return;
-                    // Playback tracking logic can be expanded here
+        function showPlayerError() {
+            const container = document.getElementById('video-container');
+            container.innerHTML = '';
+            const box = document.createElement('div');
+            box.className = 'player-error-box';
+            box.innerHTML = '<div>⚠️ वीडियो प्लेयर लोड नहीं हो पाया।<br>इंटरनेट कनेक्शन चेक करें।</div>';
+            const retryBtn = document.createElement('button');
+            retryBtn.textContent = '🔄 फिर कोशिश करें';
+            retryBtn.addEventListener('click', () => initPlayer(AppState.videoId));
+            box.appendChild(retryBtn);
+            container.appendChild(box);
+        }
+
+        function onPlayerReady() {
+            updateSeekBarDuration();
+        }
+
+        // असली fix: button का label अब सिर्फ क्लिक पर नहीं, बल्कि प्लेयर के असली state से बदलता है
+        // (चाहे pause/play YouTube के native controls से हो या हमारे toolbar से - दोनों में सही रहेगा)
+        function onPlayerStateChange(e) {
+            const btn = document.getElementById('play-pause-btn');
+            if (e.data === YT.PlayerState.PLAYING) {
+                btn.textContent = '⏸️ Pause';
+                if (!AppState.trackerInterval) {
+                    AppState.trackerInterval = setInterval(trackPlayback, 250);
                 }
-            }, 500);
-        }
-
-        function seekVideo(seconds) {
-            if(AppState.player && 
-               typeof AppState.player.getCurrentTime === 'function' && 
-               typeof AppState.player.seekTo === 'function') {
-                const cTime = AppState.player.getCurrentTime();
-                AppState.player.seekTo(cTime + seconds);
+            } else if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED) {
+                btn.textContent = '▶️ Play';
+                if (AppState.trackerInterval) {
+                    clearInterval(AppState.trackerInterval);
+                    AppState.trackerInterval = null;
+                }
             }
+            // BUFFERING/CUED जैसी अस्थायी states में label/interval को छेड़ा नहीं जाता
         }
 
-        // --- 7. EXPORT ENGINE ---
+        function updateSeekBarDuration() {
+            if (!AppState.player || typeof AppState.player.getDuration !== 'function') return;
+            const dur = AppState.player.getDuration() || 0;
+            document.getElementById('seek-range').max = dur;
+        }
+
+        function formatTime(s) {
+            if (!isFinite(s) || s < 0) s = 0;
+            const m = Math.floor(s / 60);
+            const sec = Math.floor(s % 60);
+            return `${m}:${sec.toString().padStart(2, '0')}`;
+        }
+
+        function updateSeekBar(currentTime) {
+            const range = document.getElementById('seek-range');
+            const label = document.getElementById('time-label');
+            const dur = AppState.player && typeof AppState.player.getDuration === 'function' ? AppState.player.getDuration() : 0;
+            if (dur && range.max != dur) range.max = dur; // पहले duration 0 हो सकता है, बाद में मिलने पर ठीक करें
+            if (!AppState.isScrubbing) range.value = currentTime;
+            label.innerText = `${formatTime(currentTime)} / ${formatTime(dur)}`;
+        }
+
+        function setupSeekBar() {
+            const range = document.getElementById('seek-range');
+            range.addEventListener('pointerdown', () => { AppState.isScrubbing = true; });
+            range.addEventListener('input', () => {
+                const dur = AppState.player && typeof AppState.player.getDuration === 'function' ? AppState.player.getDuration() : 0;
+                document.getElementById('time-label').innerText = `${formatTime(parseFloat(range.value))} / ${formatTime(dur)}`;
+            });
+            range.addEventListener('change', () => {
+                if (AppState.player && typeof AppState.player.seekTo === 'function') {
+                    AppState.player.seekTo(parseFloat(range.value), true);
+                }
+                AppState.isScrubbing = false;
+            });
+            range.addEventListener('pointerup', () => {
+                setTimeout(() => { AppState.isScrubbing = false; }, 50); // safety fallback
+            });
+        }
+
+        // --- 8. EXPORT ENGINE (unchanged - यह डेटा-मॉडल पर काम करता है, इसलिए कभी टूटा नहीं था) ---
         document.getElementById('export-btn').addEventListener('click', () => {
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(AppState.sentences, null, 2));
             const downloadAnchorNode = document.createElement('a');
             downloadAnchorNode.setAttribute("href", dataStr);
             downloadAnchorNode.setAttribute("download", "refined_transcript.json");
-            document.body.appendChild(downloadAnchorNode); 
+            document.body.appendChild(downloadAnchorNode);
             downloadAnchorNode.click();
             downloadAnchorNode.remove();
         });
 
-        // --- 8. INITIALIZATION FLOW ---
+        // --- 9. PROJECT LOAD / RESUME FLOW ---
+        function loadProjectIntoEditor(videoId, data) {
+            AppState.videoId = videoId;
+            AppState.sentences = data;
+            buildSentenceIndex();
+            sessionStorage.removeItem('preventAutoLoad');
+
+            document.getElementById('setup-screen').classList.remove('active');
+            document.getElementById('processing-screen').classList.remove('active');
+            document.getElementById('editor-screen').classList.add('active');
+
+            initPlayer(AppState.videoId);
+            renderSentences();
+        }
+
+        let pendingResume = null;
+        async function checkAndLoadExistingProject(url) {
+            const vId = extractVideoID(url);
+            if (!vId) { hideResumePrompt(); return; }
+            const existingProject = await DB.getProject(vId);
+            if (existingProject && existingProject.data && existingProject.data.length > 0) {
+                pendingResume = existingProject;
+                document.getElementById('resume-count').innerText = existingProject.data.length;
+                document.getElementById('project-summary').style.display = 'block';
+            } else {
+                hideResumePrompt();
+            }
+        }
+
+        function hideResumePrompt() {
+            pendingResume = null;
+            document.getElementById('project-summary').style.display = 'none';
+        }
+
+        // --- 10. INITIALIZATION FLOW ---
         document.addEventListener('DOMContentLoaded', async () => {
             const urlInput = document.getElementById('yt-url');
             const fileInput = document.getElementById('json-upload');
             const startBtn = document.getElementById('start-btn');
             const quickTestLink = document.getElementById('quick-test-link');
 
+            setupTranscriptDelegation();
+            setupManualScrollDetection();
+            setupSeekBar();
+
             function checkInputs() {
-                if(urlInput.value.trim() !== '' && fileInput.files.length > 0) {
-                    startBtn.style.display = 'block';
-                } else {
-                    startBtn.style.display = 'none';
-                }
+                startBtn.style.display = (urlInput.value.trim() !== '' && fileInput.files.length > 0) ? 'block' : 'none';
+            }
+
+            // भारी IndexedDB लुकअप हर keystroke पर ना दौड़े, इसलिए छोटा debounce
+            let debounceTimer;
+            function debouncedCheckExisting() {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => checkAndLoadExistingProject(urlInput.value), 300);
             }
 
             if (quickTestLink) {
@@ -637,20 +1019,24 @@
             fileInput.addEventListener('change', checkInputs);
             urlInput.addEventListener('input', () => {
                 checkInputs();
-                checkAndLoadExistingProject(urlInput.value);
+                debouncedCheckExisting();
             });
+
+            document.getElementById('resume-btn').addEventListener('click', () => {
+                if (!pendingResume) return;
+                loadProjectIntoEditor(pendingResume.videoId, pendingResume.data);
+                hideResumePrompt();
+            });
+            document.getElementById('discard-resume-btn').addEventListener('click', hideResumePrompt);
 
             startBtn.addEventListener('click', () => {
                 const vId = extractVideoID(urlInput.value);
-                if(!vId) return alert("Invalid YouTube URL");
-                
-                const file = fileInput.files[0];
-                if(!file) return alert("Please select a JSON file");
+                if (!vId) return alert("Invalid YouTube URL");
 
-                AppState.videoId = vId;
-                // नया प्रोजेक्ट शुरू हो रहा है, इसलिए ऑटो-लोड रोकने वाली बंदिश को साफ़ करें
-                sessionStorage.removeItem('preventAutoLoad');
-                
+                const file = fileInput.files[0];
+                if (!file) return alert("Please select a JSON file");
+
+                hideResumePrompt();
                 document.getElementById('setup-screen').classList.remove('active');
                 document.getElementById('processing-screen').classList.add('active');
                 updateProcessLog("Reading File...");
@@ -660,14 +1046,9 @@
                     try {
                         updateProcessLog("Parsing JSON...");
                         const rawJsonData = JSON.parse(ev.target.result);
-                        
-                        AppState.sentences = await processRawJSON(rawJsonData);
-                        
-                        document.getElementById('processing-screen').classList.remove('active');
-                        document.getElementById('editor-screen').classList.add('active');
-                        
-                        initPlayer(AppState.videoId);
-                        renderSentences();
+                        const sentences = await processRawJSON(rawJsonData);
+
+                        loadProjectIntoEditor(vId, sentences);
                         await DB.saveProject(AppState.videoId, AppState.sentences);
                     } catch (err) {
                         console.error(err);
@@ -679,47 +1060,50 @@
                 reader.readAsText(file);
             });
 
- // Back button handling
+            // Back button handling
             document.getElementById('back-btn').addEventListener('click', () => {
                 if (AppState.player && typeof AppState.player.pauseVideo === 'function') {
                     AppState.player.pauseVideo();
                 }
-                // यूजर खुद सेटअप स्क्रीन पर गया है, इसलिए ऑटो-लोड को रोकें
+                if (AppState.trackerInterval) {
+                    clearInterval(AppState.trackerInterval);
+                    AppState.trackerInterval = null;
+                }
                 sessionStorage.setItem('preventAutoLoad', 'true');
                 document.getElementById('editor-screen').classList.remove('active');
                 document.getElementById('setup-screen').classList.add('active');
             });
 
-            // Play/Pause handling
+            // Play/Pause handling - असली काम onStateChange में होता है, यहाँ सिर्फ action trigger होता है
             document.getElementById('play-pause-btn').addEventListener('click', () => {
-                if(!AppState.player) return;
-                if (typeof AppState.player.getPlayerState === 'function' && 
-                    typeof AppState.player.pauseVideo === 'function' && 
-                    typeof AppState.player.playVideo === 'function') {
-                    
-                    const state = AppState.player.getPlayerState();
-                    if(state === 1) AppState.player.pauseVideo();
-                    else AppState.player.playVideo();
+                if (!AppState.player || typeof AppState.player.getPlayerState !== 'function') return;
+                const state = AppState.player.getPlayerState();
+                if (state === YT.PlayerState.PLAYING) AppState.player.pauseVideo();
+                else AppState.player.playVideo();
+            });
+
+            document.getElementById('seek-back-btn').addEventListener('click', () => seekVideo(-3));
+            document.getElementById('seek-fwd-btn').addEventListener('click', () => seekVideo(3));
+
+            document.getElementById('follow-toggle').addEventListener('click', () => {
+                AppState.isFollowing = !AppState.isFollowing;
+                updateFollowUI();
+                if (AppState.isFollowing && AppState.activeSentenceIndex >= 0) {
+                    const s = AppState.sentences[AppState.activeSentenceIndex];
+                    const el = AppState.cardElements.get(s.id);
+                    if (el) scrollCardIntoView(el);
                 }
             });
 
-            // --- Database & Auto Restore Logic (Executed Safely inside DOMContentLoaded) ---
+            // --- Database & Auto Restore Logic ---
             try {
                 await DB.init();
                 const preventAutoLoad = sessionStorage.getItem('preventAutoLoad') === 'true';
-                
-                // अगर यूजर खुद बैक नहीं गया है, तो बिना पूछे डायरेक्ट आख़िरी काम लोड करो
+
                 if (!preventAutoLoad) {
                     const lastProject = await DB.loadLastProject();
                     if (lastProject && lastProject.data && lastProject.data.length > 0) {
-                        AppState.videoId = lastProject.videoId;
-                        AppState.sentences = lastProject.data;
-                        
-                        document.getElementById('setup-screen').classList.remove('active');
-                        document.getElementById('editor-screen').classList.add('active');
-                        
-                        initPlayer(AppState.videoId);
-                        renderSentences();
+                        loadProjectIntoEditor(lastProject.videoId, lastProject.data);
                     }
                 }
             } catch (dbError) {
