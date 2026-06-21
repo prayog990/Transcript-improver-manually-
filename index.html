@@ -357,6 +357,41 @@
         .modal-card button { width: 100%; margin-top: 0; }
         .modal-card .secondary-btn { background: var(--border); color: var(--text-color); }
 
+        /* Speaker name suggestion popup - pehle se use ho chuke naam yahin se 1-tap me select hote hain */
+        #speaker-suggest-popup {
+            position: fixed;
+            z-index: 250;
+            background: var(--surface);
+            border: 1px solid var(--primary);
+            border-radius: 10px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+            padding: 8px;
+            width: 240px;
+            max-height: 230px;
+            overflow-y: auto;
+            display: none;
+        }
+        #speaker-suggest-popup.visible { display: block; }
+        .suggest-hint {
+            font-size: 11px;
+            color: #888;
+            padding: 2px 4px 6px;
+        }
+        .suggest-chip {
+            display: inline-block;
+            background: rgba(var(--primary-rgb), 0.15);
+            color: var(--primary);
+            border: 1px solid var(--primary);
+            border-radius: 16px;
+            padding: 6px 12px;
+            margin: 3px;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 18px;
+        }
+        .suggest-chip:active { opacity: 0.6; }
+
     </style>
 </head>
 <body>
@@ -436,6 +471,11 @@
         </div>
     </div>
 
+    <div id="speaker-suggest-popup">
+        <div class="suggest-hint">Tap karke select karo, ya naya naam type karo:</div>
+        <div id="speaker-suggest-list"></div>
+    </div>
+
     <script src="https://www.youtube.com/iframe_api"></script>
     <script>
         // --- 1. CORE STATE & ARCHITECTURE ---
@@ -449,7 +489,9 @@
             trackerInterval: null,     // सिर्फ ek interval हमेशा चले, double-leak ना हो
             activeSentenceIndex: -1,
             isFollowing: true,         // auto-scroll चालू/बंद
-            isScrubbing: false         // seek-bar drag के दौरान tracker उसमें टांग ना अड़ाए
+            isScrubbing: false,        // seek-bar drag के दौरान tracker उसमें टांग ना अड़ाए
+            knownSpeakers: new Set(),  // अब तक टाइप किए गए सारे speaker names - suggestion list के लिए
+            activeSpeakerEditEl: null  // अभी जो speaker-box focus में है, उसका reference
         };
 
         // --- 2. STORAGE ENGINE (IndexedDB) ---
@@ -934,9 +976,92 @@
             const newSpeaker = newSpeakerRaw.trim() || "UU";
             s.speaker = newSpeaker;
             s.speakerManual = true;
+            if (newSpeaker !== 'UU') AppState.knownSpeakers.add(newSpeaker);
             updateCardSpeakerDisplay(s, true);
             propagateSpeakerForward(idx, newSpeaker);
             triggerAutoSave();
+        }
+
+        // --- SPEAKER NAME SUGGESTIONS: pehle se use ho chuke naam yaad rakh kar 1-tap selection ---
+        function rebuildKnownSpeakers() {
+            AppState.knownSpeakers = new Set();
+            AppState.sentences.forEach(s => {
+                if (s.speaker && s.speaker !== 'UU') AppState.knownSpeakers.add(s.speaker);
+            });
+        }
+
+        function getSpeakerSuggestions(query) {
+            const q = (query || '').trim().toLowerCase();
+            const names = Array.from(AppState.knownSpeakers).sort((a, b) => a.localeCompare(b));
+            if (!q) return names; // box khali hai -> sabhi known naam dikhao
+            return names.filter(n => n.toLowerCase().includes(q));
+        }
+
+        function positionSuggestPopup(targetEl) {
+            const popup = document.getElementById('speaker-suggest-popup');
+            const rect = targetEl.getBoundingClientRect();
+            const vw = window.innerWidth, vh = window.innerHeight;
+            let top = rect.bottom + 6;
+            let left = rect.left;
+            const popupWidth = 240;
+            if (left + popupWidth + 8 > vw) left = Math.max(8, vw - popupWidth - 8);
+            if (top + 230 > vh) top = Math.max(8, rect.top - 236); // neeche jagah na ho to upar dikhao
+            popup.style.top = `${top}px`;
+            popup.style.left = `${left}px`;
+        }
+
+        function showSpeakerSuggestions(targetEl, currentQuery) {
+            const list = getSpeakerSuggestions(currentQuery);
+            const popup = document.getElementById('speaker-suggest-popup');
+            if (list.length === 0) { popup.classList.remove('visible'); return; }
+            const listEl = document.getElementById('speaker-suggest-list');
+            listEl.innerHTML = list.map(name =>
+                `<span class="suggest-chip" data-name="${escapeHtml(name)}">${escapeHtml(name)}</span>`
+            ).join('');
+            positionSuggestPopup(targetEl);
+            popup.classList.add('visible');
+        }
+
+        function hideSpeakerSuggestions() {
+            document.getElementById('speaker-suggest-popup').classList.remove('visible');
+            AppState.activeSpeakerEditEl = null;
+        }
+
+        function setupSpeakerSuggestions() {
+            const popup = document.getElementById('speaker-suggest-popup');
+            const container = document.getElementById('virtual-scroller-content');
+
+            container.addEventListener('focusin', (e) => {
+                if (!e.target.classList.contains('speaker-edit')) return;
+                AppState.activeSpeakerEditEl = e.target;
+                showSpeakerSuggestions(e.target, e.target.textContent);
+            });
+
+            container.addEventListener('input', (e) => {
+                if (!e.target.classList.contains('speaker-edit')) return;
+                showSpeakerSuggestions(e.target, e.target.textContent);
+            });
+
+            // Chip par tap karte waqt contenteditable se focus na hate (warna text save hone se pehle hi blur ho jaayega)
+            popup.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.suggest-chip')) e.preventDefault();
+            });
+            popup.addEventListener('click', (e) => {
+                const chip = e.target.closest('.suggest-chip');
+                if (!chip) return;
+                const el = AppState.activeSpeakerEditEl;
+                if (el) {
+                    el.textContent = chip.dataset.name;
+                    el.blur(); // yahi se focusout chal kar save + aage propagate kar dega
+                }
+                hideSpeakerSuggestions();
+            });
+
+            // Scroll/resize hote hi popup hide kar do, warna position galat reh jaati hai
+            document.getElementById('transcript-area').addEventListener('scroll', hideSpeakerSuggestions);
+            window.addEventListener('resize', () => {
+                if (AppState.activeSpeakerEditEl) hideSpeakerSuggestions();
+            });
         }
 
         function triggerAutoSave() {
@@ -1002,6 +1127,7 @@
                 if (!e.target.classList.contains('speaker-edit')) return;
                 const card = e.target.closest('.sentence-card');
                 handleSpeakerEdit(card.dataset.id, e.target.innerText);
+                hideSpeakerSuggestions();
             });
         }
 
@@ -1175,7 +1301,10 @@
                 }
             });
             flush();
-            downloadFile('transcript_story.txt', 'text/plain;charset=utf-8', lines.join('\n\n'));
+            // UTF-8 BOM (\uFEFF) jodna zaroori hai taaki Notepad jaise apps Hindi text ko sahi
+            // encoding (UTF-8) me pehchanein - warna mojibake (à¤¹à¤¾à¤‚...) dikhta hai.
+            // NOTE: JSON export me ye BOM kabhi mat jodna - JSON.parse() BOM ke saath fail ho jaata hai.
+            downloadFile('transcript_story.txt', 'text/plain;charset=utf-8', '\uFEFF' + lines.join('\n\n'));
         }
 
         // Edited/split lines ke liye real word-timing nahi bachta, isliye sentence ke start-end
@@ -1241,6 +1370,7 @@
             AppState.videoId = videoId;
             AppState.sentences = data;
             buildSentenceIndex();
+            rebuildKnownSpeakers(); // pichle saare speaker names suggestion list me load ho jaayein
             sessionStorage.removeItem('preventAutoLoad');
 
             document.getElementById('setup-screen').classList.remove('active');
@@ -1280,6 +1410,7 @@
             setupTranscriptDelegation();
             setupManualScrollDetection();
             setupSeekBar();
+            setupSpeakerSuggestions();
 
             function checkInputs() {
                 startBtn.style.display = (urlInput.value.trim() !== '' && fileInput.files.length > 0) ? 'block' : 'none';
