@@ -325,6 +325,38 @@
         }
         .player-error-box button { width: auto; padding: 10px 20px; }
 
+        /* Inherited speaker (auto-copied from previous line) - thoda dim dikhega vs manually set speaker */
+        .speaker-edit.inherited {
+            opacity: 0.55;
+            font-style: italic;
+        }
+
+        /* Export मोड चुनने वाला modal - native confirm() की जगह */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            padding: 20px;
+        }
+        .modal-card {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+            max-width: 360px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .modal-card h3 { margin-bottom: 4px; }
+        .modal-card p { font-size: 13px; color: #888; margin-bottom: 6px; }
+        .modal-card button { width: 100%; margin-top: 0; }
+        .modal-card .secondary-btn { background: var(--border); color: var(--text-color); }
+
     </style>
 </head>
 <body>
@@ -391,6 +423,16 @@
             <div class="follow-bar"><button id="follow-toggle" class="follow-pill">🎯 Follow: ON</button></div>
             <div id="virtual-scroller-content"></div>
             <div id="render-progress-footer"></div>
+        </div>
+    </div>
+
+    <div id="export-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-card">
+            <h3>Export Transcript</h3>
+            <p>Kis format me chahiye?</p>
+            <button id="export-text-btn">📝 Text File (Story / Conversation)</button>
+            <button id="export-json-btn">🎬 JSON File (Word-level Captions)</button>
+            <button id="export-cancel-btn" class="secondary-btn">Cancel</button>
         </div>
     </div>
 
@@ -513,13 +555,16 @@
                         currentSentence = {
                             id: `s${String(sentenceCounter++).padStart(6, '0')}`,
                             speaker: "UU",
+                            speakerManual: false,   // false = abhi tak kisi ne manually set nahi kiya (inherited/default)
                             sentence_start: startTime,
                             words: [],
-                            shuddh_text: ""
+                            shuddh_text: "",
+                            textEdited: false        // true hote hi real word-timestamps trust nahi kiye jaate (export ke liye)
                         };
                     }
 
-                    currentSentence.words.push({ c: conf });
+                    // text + start/end yahin save kar rahe hain taaki JSON export me asli per-word caption timing mil sake
+                    currentSentence.words.push({ text: wordText.trim(), start: startTime, end: endTime, c: conf });
                     currentSentence.sentence_end = endTime;
 
                     if (item.attaches_to === "previous") {
@@ -581,8 +626,8 @@
             const header = document.createElement('div');
             header.className = 'card-header';
             header.innerHTML = `
-                <span><b class="speaker-edit" contenteditable="true">${escapeHtml(s.speaker)}</b> | ${s.id}</span>
-                <span>⏱ ${s.sentence_start.toFixed(2)}s - ${s.sentence_end.toFixed(2)}s | <span class="${confClass}">Conf: ${(avgConf * 100).toFixed(0)}%</span></span>
+                <span><b class="speaker-edit${s.speakerManual ? '' : ' inherited'}" contenteditable="true">${escapeHtml(s.speaker)}</b> | <span class="id-label">${s.id}</span></span>
+                <span><span class="time-range">⏱ ${s.sentence_start.toFixed(2)}s - ${s.sentence_end.toFixed(2)}s</span> | <span class="conf-label ${confClass}">Conf: ${(avgConf * 100).toFixed(0)}%</span></span>
             `;
 
             // textarea.value से text भरा जाता है (innerHTML से नहीं) — वरना & < > वाले शब्द टेक्स्ट तोड़ देते थे
@@ -649,6 +694,127 @@
                 footer.style.display = 'block';
                 footer.innerText = `बाकी लाइनें लोड हो रही हैं... (${renderCursor}/${total})`;
             }
+        }
+
+        // Split se ek naya card seedha DOM me insert hota hai (already "rendered" region ke andar),
+        // isliye contiguous render-count ko +1 se sync rakhna padta hai.
+        function bumpRenderCursor(n) { renderCursor += n; }
+
+        // Split ke baad sirf timing/confidence text ko refresh karta hai (poora card rebuild nahi karta,
+        // taaki focus/cursor state na toote aur baaki cards untouched rahein)
+        function refreshCardHeader(s) {
+            const el = AppState.cardElements.get(s.id);
+            if (!el) return;
+            const timeRange = el.querySelector('.time-range');
+            if (timeRange) timeRange.textContent = `⏱ ${s.sentence_start.toFixed(2)}s - ${s.sentence_end.toFixed(2)}s`;
+            const confLabel = el.querySelector('.conf-label');
+            if (confLabel) {
+                const avgConf = s.words.length ? s.words.reduce((a, w) => a + (w.c || 1), 0) / s.words.length : 1;
+                let cls = 'conf-high';
+                if (avgConf < 0.85) cls = 'conf-med';
+                if (avgConf < 0.75) cls = 'conf-low';
+                if (avgConf < 0.50) cls = 'conf-poor';
+                confLabel.className = `conf-label ${cls}`;
+                confLabel.textContent = `Conf: ${(avgConf * 100).toFixed(0)}%`;
+            }
+        }
+
+        // Split ke baad ek sentence ke aage wale sab cards ke IDs ko sequential rakhta hai (s000007, s000008...).
+        // Sirf jo cards abhi tak render ho chuke hain unka DOM bhi update karta hai - baaki cards apne aap
+        // sahi ID le lenge jab woh lazily render honge (kyunki s.id data me pehle se hi sahi set ho chuka hota hai).
+        function renumberSentencesFrom(startIndex) {
+            for (let i = startIndex; i < AppState.sentences.length; i++) {
+                const s = AppState.sentences[i];
+                const newId = `s${String(i + 1).padStart(6, '0')}`;
+                if (s.id === newId) continue;
+                const oldId = s.id;
+                s.id = newId;
+                const el = AppState.cardElements.get(oldId);
+                if (el) {
+                    AppState.cardElements.delete(oldId);
+                    AppState.cardElements.set(newId, el);
+                    el.dataset.id = newId;
+                    const idLabel = el.querySelector('.id-label');
+                    if (idLabel) idLabel.textContent = newId;
+                }
+            }
+        }
+
+        // --- DOUBLE-ENTER SPLIT: ek line me galti se 2 speakers ka text mix ho jaaye to use todne ka tarika ---
+        // Textarea me blank line (double Enter) dikhte hi yahan se split trigger hota hai.
+        function trySplitSentence(card, textarea) {
+            const id = card.dataset.id;
+            const idx = AppState.sentenceById.get(id);
+            if (idx === undefined) return false;
+
+            const raw = textarea.value;
+            const m = raw.match(/\n[ \t]*\n+/); // पहली blank line par split
+            if (!m) return false;
+
+            const partA = raw.slice(0, m.index).trim();
+            const partB = raw.slice(m.index + m[0].length).replace(/^[ \t]+/, '');
+            if (partA === '') return false; // sirf shuru me blank lines hain to kuch split karne layak nahi
+
+            const s = AppState.sentences[idx];
+            const origStart = s.sentence_start;
+            const origEnd = s.sentence_end;
+            const origWords = s.words || [];
+
+            // Time ko text-length ke hisaab se proportionally baant rahe hain (exact word-timing nahi hai,
+            // isliye yeh sirf ek estimate hai - jaisa pehle discuss kiya tha)
+            const lenA = Math.max(partA.length, 1);
+            const lenB = Math.max(partB.length, 1);
+            let ratio = lenA / (lenA + lenB);
+            ratio = Math.min(0.92, Math.max(0.08, ratio)); // dono taraf kam se kam thoda time milta rahe
+            const splitTime = origStart + (origEnd - origStart) * ratio;
+            const wordSplitIdx = Math.min(origWords.length, Math.max(1, Math.round(origWords.length * ratio)));
+
+            // Part A: original card me hi reh jaata hai (same ID)
+            s.shuddh_text = partA;
+            s.sentence_end = splitTime;
+            s.words = origWords.slice(0, wordSplitIdx);
+            s.textEdited = true;
+
+            // Part B: naya card - speaker original se copy hota hai (अक्सर isi liye split hota hai),
+            // inherited (dim) dikhega jab tak user khud edit na kare
+            const newSentence = {
+                id: 'temp',
+                speaker: s.speaker,
+                speakerManual: false,
+                sentence_start: splitTime,
+                sentence_end: origEnd,
+                shuddh_text: partB,
+                words: origWords.slice(wordSplitIdx),
+                textEdited: true
+            };
+
+            AppState.sentences.splice(idx + 1, 0, newSentence);
+            renumberSentencesFrom(idx + 1);
+            buildSentenceIndex();
+            bumpRenderCursor(1);
+
+            // Original textarea ko trim kiya hua text dikhao (blank lines hata kar)
+            textarea.value = s.shuddh_text;
+            autoGrow(textarea);
+            refreshCardHeader(s);
+
+            const newCardEl = createSentenceCard(newSentence);
+            card.insertAdjacentElement('afterend', newCardEl);
+            updateRenderFooter();
+            triggerAutoSave();
+
+            // Naye card me seedha cursor le jaao - taaki user turant agla vaakya type karta rahe
+            requestAnimationFrame(() => {
+                const ta = newCardEl.querySelector('.shuddh-text-area');
+                if (ta) {
+                    autoGrow(ta);
+                    ta.focus();
+                    ta.setSelectionRange(ta.value.length, ta.value.length);
+                    ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+
+            return true;
         }
 
         // --- 5. SYNC ENGINE: वीडियो के साथ सही sentence हाईलाइट + ऑटो-स्क्रॉल ---
@@ -733,14 +899,43 @@
         function handleTextEdit(id, newText) {
             const idx = AppState.sentenceById.get(id);
             if (idx === undefined) return;
-            AppState.sentences[idx].shuddh_text = newText;
+            const s = AppState.sentences[idx];
+            s.shuddh_text = newText;
+            s.textEdited = true; // ab is line ke real ASR word-timings export ke liye trust nahi kiye jaayenge
             triggerAutoSave();
         }
 
-        function handleSpeakerEdit(id, newSpeaker) {
+        // Speaker ek baar manually set hone ke baad, agle manual change tak aage ki saari lines me
+        // apne aap copy hota rahega - taaki same speaker ki lagataar lines me baar baar type na karna pade.
+        function updateCardSpeakerDisplay(s, manual) {
+            const el = AppState.cardElements.get(s.id);
+            if (!el) return;
+            const span = el.querySelector('.speaker-edit');
+            if (!span) return;
+            if (document.activeElement !== span) {
+                span.textContent = s.speaker;
+            }
+            span.classList.toggle('inherited', !manual);
+        }
+
+        function propagateSpeakerForward(fromIndex, newSpeaker) {
+            for (let j = fromIndex + 1; j < AppState.sentences.length; j++) {
+                const sj = AppState.sentences[j];
+                if (sj.speakerManual) break; // agla manual-set speaker mila to wahin ruk jaao
+                sj.speaker = newSpeaker;
+                updateCardSpeakerDisplay(sj, false);
+            }
+        }
+
+        function handleSpeakerEdit(id, newSpeakerRaw) {
             const idx = AppState.sentenceById.get(id);
             if (idx === undefined) return;
-            AppState.sentences[idx].speaker = newSpeaker.trim() || "UU";
+            const s = AppState.sentences[idx];
+            const newSpeaker = newSpeakerRaw.trim() || "UU";
+            s.speaker = newSpeaker;
+            s.speakerManual = true;
+            updateCardSpeakerDisplay(s, true);
+            propagateSpeakerForward(idx, newSpeaker);
             triggerAutoSave();
         }
 
@@ -787,8 +982,15 @@
 
             container.addEventListener('input', (e) => {
                 if (!e.target.classList.contains('shuddh-text-area')) return;
-                autoGrow(e.target);
                 const card = e.target.closest('.sentence-card');
+
+                // Double Enter (blank line) = is point par sentence ko do alag cards me todna hai
+                if (/\n[ \t]*\n/.test(e.target.value)) {
+                    const didSplit = trySplitSentence(card, e.target);
+                    if (didSplit) return; // textarea.value already trim ho chuka, save/grow andar ho gaya
+                }
+
+                autoGrow(e.target);
                 handleTextEdit(card.dataset.id, e.target.value);
             });
 
@@ -940,15 +1142,98 @@
             });
         }
 
-        // --- 8. EXPORT ENGINE (unchanged - यह डेटा-मॉडल पर काम करता है, इसलिए कभी टूटा नहीं था) ---
+        // --- 8. EXPORT ENGINE: 2 modes - Text (story) aur JSON (word-level captions) ---
+        function downloadFile(filename, mimeType, content) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        // MODE 1: Plain text, conversation/story style - koi timing nahi, lagataar same-speaker
+        // lines ek hi paragraph me group ho jaati hain (speaker-inheritance ka yahi fayda hai)
+        function exportAsTextStory() {
+            const lines = [];
+            let curSpeaker = null;
+            let curTexts = [];
+            function flush() {
+                if (curTexts.length) lines.push(`${curSpeaker || 'UU'}: ${curTexts.join(' ')}`);
+            }
+            AppState.sentences.forEach(s => {
+                const sp = s.speaker || 'UU';
+                if (sp !== curSpeaker) {
+                    flush();
+                    curSpeaker = sp;
+                    curTexts = [s.shuddh_text];
+                } else {
+                    curTexts.push(s.shuddh_text);
+                }
+            });
+            flush();
+            downloadFile('transcript_story.txt', 'text/plain;charset=utf-8', lines.join('\n\n'));
+        }
+
+        // Edited/split lines ke liye real word-timing nahi bachta, isliye sentence ke start-end
+        // window ke andar shabdon ko unki length ke hisaab se proportionally time diya jaata hai (estimate).
+        function splitTextProportional(text, start, end) {
+            const words = text.split(/\s+/).filter(Boolean);
+            if (words.length === 0) return [];
+            const totalChars = words.reduce((sum, w) => sum + w.length, 0) || words.length;
+            const duration = Math.max(end - start, 0.01);
+            let cursor = start;
+            return words.map((w, i) => {
+                const weight = w.length / totalChars;
+                const wStart = cursor;
+                const wEnd = (i === words.length - 1) ? end : cursor + duration * weight;
+                cursor = wEnd;
+                return { text: w, start: +wStart.toFixed(3), end: +wEnd.toFixed(3) };
+            });
+        }
+
+        function buildCaptionWords(s) {
+            // Line kabhi edit/split nahi hui to ASR ke asli, exact per-word timestamps use karo
+            const hasRealWords = !s.textEdited && Array.isArray(s.words) && s.words.length > 0 && s.words[0].text !== undefined;
+            if (hasRealWords) {
+                return s.words.map(w => ({ text: w.text, start: +w.start.toFixed(3), end: +w.end.toFixed(3) }));
+            }
+            return splitTextProportional(s.shuddh_text, s.sentence_start, s.sentence_end);
+        }
+
+        // MODE 2: Naye reading-webapp ke liye - per-word timing taaki har shabd ka caption sync ho
+        function exportAsCaptionJSON() {
+            const output = {
+                videoId: AppState.videoId,
+                exportedAt: new Date().toISOString(),
+                sentences: AppState.sentences.map(s => ({
+                    id: s.id,
+                    speaker: s.speaker || 'UU',
+                    start: +s.sentence_start.toFixed(3),
+                    end: +s.sentence_end.toFixed(3),
+                    text: s.shuddh_text,
+                    words: buildCaptionWords(s)
+                }))
+            };
+            downloadFile('transcript_captions.json', 'application/json;charset=utf-8', JSON.stringify(output, null, 2));
+        }
+
         document.getElementById('export-btn').addEventListener('click', () => {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(AppState.sentences, null, 2));
-            const downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", "refined_transcript.json");
-            document.body.appendChild(downloadAnchorNode);
-            downloadAnchorNode.click();
-            downloadAnchorNode.remove();
+            document.getElementById('export-modal').style.display = 'flex';
+        });
+        document.getElementById('export-cancel-btn').addEventListener('click', () => {
+            document.getElementById('export-modal').style.display = 'none';
+        });
+        document.getElementById('export-text-btn').addEventListener('click', () => {
+            exportAsTextStory();
+            document.getElementById('export-modal').style.display = 'none';
+        });
+        document.getElementById('export-json-btn').addEventListener('click', () => {
+            exportAsCaptionJSON();
+            document.getElementById('export-modal').style.display = 'none';
         });
 
         // --- 9. PROJECT LOAD / RESUME FLOW ---
