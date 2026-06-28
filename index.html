@@ -283,16 +283,41 @@
             cursor: pointer;
         }
 
-        .speaker-edit {
-            display: inline-block;
-            min-width: 40px;
-            padding: 2px 8px;
+        /* Speaker button: ab contenteditable nahi, proper button hai */
+        .speaker-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            min-width: 90px;         /* baseline width, text ke saath grow karta hai */
+            width: max-content;       /* content ke hisaab se grow */
+            max-width: 180px;
+            padding: 4px 10px;
             background-color: var(--primary);
             color: var(--btn-text);
-            border-radius: 4px;
-            text-align: center;
-            cursor: text;
+            border-radius: 6px;
+            text-align: left;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            border: none;
+            line-height: 1.4;
+            margin-top: 0;
+            min-height: unset;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
+        .speaker-btn::after {
+            content: '▾';
+            font-size: 10px;
+            opacity: 0.7;
+            flex-shrink: 0;
+        }
+        .speaker-btn.inherited {
+            opacity: 0.55;
+            font-style: italic;
+        }
+        .speaker-btn:active { opacity: 0.75; }
 
         .shuddh-text-area {
             width: 100%;
@@ -325,13 +350,146 @@
         }
         .player-error-box button { width: auto; padding: 10px 20px; }
 
-        /* Inherited speaker (auto-copied from previous line) - thoda dim dikhega vs manually set speaker */
-        .speaker-edit.inherited {
-            opacity: 0.55;
-            font-style: italic;
+        /* ── SPEAKER BUTTON (replaces old contenteditable span) ── */
+        .speaker-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 4px;
+            min-width: 90px;           /* 90px minimum, grows with name */
+            width: auto;
+            padding: 4px 8px;
+            background-color: var(--primary);
+            color: var(--btn-text);
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            margin: 0;
+            min-height: unset;
+            line-height: 1.4;
+            white-space: nowrap;
+            text-align: left;
+        }
+        .speaker-btn.inherited { opacity: 0.55; font-style: italic; }
+        .speaker-btn::after { content: '▾'; font-style: normal; font-size: 10px; }
+
+        /* ── SPEAKER DROPDOWN ── */
+        #speaker-dropdown {
+            position: fixed;
+            z-index: 260;
+            background: var(--surface);
+            border: 1px solid var(--primary);
+            border-radius: 10px;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.45);
+            width: 220px;
+            max-height: 280px;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #speaker-dropdown.visible { display: flex; }
+        .spk-drop-list {
+            overflow-y: auto;
+            padding: 6px;
+            flex: 1;
+        }
+        .spk-drop-item {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: rgba(var(--primary-rgb),0.1);
+            color: var(--text-color);
+            border: 1px solid transparent;
+            border-radius: 8px;
+            padding: 9px 12px;
+            margin-bottom: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            min-height: unset;
+            margin-top: 0;
+        }
+        .spk-drop-item:active, .spk-drop-item.active-spk { background: rgba(var(--primary-rgb),0.28); border-color: var(--primary); }
+        .spk-drop-new {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px;
+            border-top: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .spk-drop-new input {
+            flex: 1;
+            padding: 7px 10px;
+            background: var(--bg-color);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-color);
+            font-size: 13px;
+            margin: 0;
+        }
+        .spk-drop-new button {
+            padding: 7px 12px;
+            font-size: 12px;
+            margin: 0;
+            min-height: unset;
+            width: auto;
         }
 
-        /* Export मोड चुनने वाला modal - native confirm() की जगह */
+        /* ── MANAGE SPEAKERS PANEL ── */
+        #manage-speakers-panel {
+            position: fixed;
+            inset: 0;
+            z-index: 270;
+            background: rgba(0,0,0,0.55);
+            display: none;
+            align-items: flex-end;
+            justify-content: center;
+        }
+        #manage-speakers-panel.visible { display: flex; }
+        .manage-speakers-card {
+            background: var(--surface);
+            border-radius: 16px 16px 0 0;
+            padding: 16px;
+            width: 100%;
+            max-width: 480px;
+            max-height: 70vh;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .manage-speakers-card h3 { font-size: 16px; margin-bottom: 2px; }
+        .manage-speakers-card p  { font-size: 12px; color: #888; }
+        #manage-speaker-list { display: flex; flex-wrap: wrap; gap: 8px; overflow-y: auto; flex: 1; padding-bottom: 4px; }
+        .manage-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: rgba(var(--primary-rgb),0.12);
+            border: 1px solid var(--primary);
+            border-radius: 20px;
+            padding: 6px 12px;
+            font-size: 13px; font-weight: bold;
+            color: var(--primary);
+        }
+        .manage-chip-del {
+            background: none; border: none; color: var(--error);
+            font-size: 15px; cursor: pointer; padding: 0 2px;
+            min-height: unset; width: auto; margin: 0; line-height: 1;
+        }
+        .manage-add-row {
+            display: flex; gap: 8px;
+        }
+        .manage-add-row input {
+            flex: 1; padding: 10px 12px;
+            background: var(--bg-color); border: 1px solid var(--border);
+            border-radius: 8px; color: var(--text-color);
+            font-size: 14px; margin: 0;
+        }
+        .manage-add-row button { width: auto; padding: 10px 18px; margin: 0; min-height: unset; }
+        .manage-close-btn { background: var(--border); color: var(--text-color); }
+
+        /* Export modal */
         .modal-overlay {
             position: fixed;
             inset: 0;
@@ -356,41 +514,6 @@
         .modal-card p { font-size: 13px; color: #888; margin-bottom: 6px; }
         .modal-card button { width: 100%; margin-top: 0; }
         .modal-card .secondary-btn { background: var(--border); color: var(--text-color); }
-
-        /* Speaker name suggestion popup - pehle se use ho chuke naam yahin se 1-tap me select hote hain */
-        #speaker-suggest-popup {
-            position: fixed;
-            z-index: 250;
-            background: var(--surface);
-            border: 1px solid var(--primary);
-            border-radius: 10px;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.4);
-            padding: 8px;
-            width: 240px;
-            max-height: 230px;
-            overflow-y: auto;
-            display: none;
-        }
-        #speaker-suggest-popup.visible { display: block; }
-        .suggest-hint {
-            font-size: 11px;
-            color: #888;
-            padding: 2px 4px 6px;
-        }
-        .suggest-chip {
-            display: inline-block;
-            background: rgba(var(--primary-rgb), 0.15);
-            color: var(--primary);
-            border: 1px solid var(--primary);
-            border-radius: 16px;
-            padding: 6px 12px;
-            margin: 3px;
-            font-size: 13px;
-            font-weight: bold;
-            cursor: pointer;
-            line-height: 18px;
-        }
-        .suggest-chip:active { opacity: 0.6; }
 
     </style>
 </head>
@@ -451,6 +574,7 @@
             <button class="tool-btn" id="play-pause-btn">▶️ Play</button>
             <button class="tool-btn" id="seek-back-btn">⏪ 3s</button>
             <button class="tool-btn" id="seek-fwd-btn">⏩ 3s</button>
+            <button class="tool-btn" id="speakers-mgr-btn">👥 Speakers</button>
             <button class="tool-btn" id="export-btn">📤 Export</button>
         </div>
 
@@ -471,9 +595,27 @@
         </div>
     </div>
 
-    <div id="speaker-suggest-popup">
-        <div class="suggest-hint">Tap karke select karo, ya naya naam type karo:</div>
-        <div id="speaker-suggest-list"></div>
+    <!-- Speaker dropdown (opens when any speaker-btn clicked) -->
+    <div id="speaker-dropdown">
+        <div class="spk-drop-list" id="spk-drop-list"></div>
+        <div class="spk-drop-new" id="spk-drop-new" style="display:none;">
+            <input type="text" id="spk-drop-input" placeholder="Naam likho..." maxlength="40">
+            <button id="spk-drop-done-btn">Done</button>
+        </div>
+    </div>
+
+    <!-- Manage Speakers panel (bottom sheet) -->
+    <div id="manage-speakers-panel">
+        <div class="manage-speakers-card">
+            <h3>👥 Speakers Manage Karo</h3>
+            <p>Yahan pehle se saare speakers ke naam add kar lo — phir har line par dropdown se 1-tap me select hoga.</p>
+            <div id="manage-speaker-list"></div>
+            <div class="manage-add-row">
+                <input type="text" id="manage-spk-input" placeholder="Naya speaker naam..." maxlength="40">
+                <button id="manage-spk-add-btn">➕ Add</button>
+            </div>
+            <button id="manage-spk-close-btn" class="manage-close-btn">Done ✓</button>
+        </div>
     </div>
 
     <script src="https://www.youtube.com/iframe_api"></script>
@@ -488,10 +630,10 @@
             player: null,
             trackerInterval: null,     // सिर्फ ek interval हमेशा चले, double-leak ना हो
             activeSentenceIndex: -1,
-            isFollowing: true,         // auto-scroll चालू/बंद
-            isScrubbing: false,        // seek-bar drag के दौरान tracker उसमें टांग ना अड़ाए
-            knownSpeakers: new Set(),  // अब तक टाइप किए गए सारे speaker names - suggestion list के लिए
-            activeSpeakerEditEl: null  // अभी जो speaker-box focus में है, उसका reference
+            isFollowing: true,
+            isScrubbing: false,
+            speakerList: [],           // ordered list of speaker names (user-managed via Manage panel)
+            activeDropdownCardId: null // kis card ka dropdown abhi khula hai
         };
 
         // --- 2. STORAGE ENGINE (IndexedDB) ---
@@ -668,7 +810,7 @@
             const header = document.createElement('div');
             header.className = 'card-header';
             header.innerHTML = `
-                <span><b class="speaker-edit${s.speakerManual ? '' : ' inherited'}" contenteditable="true">${escapeHtml(s.speaker)}</b> | <span class="id-label">${s.id}</span></span>
+                <span><button class="speaker-btn${s.speakerManual ? '' : ' inherited'}" data-card-id="${s.id}">${escapeHtml(s.speaker)}</button> <span class="id-label">${s.id}</span></span>
                 <span><span class="time-range">⏱ ${s.sentence_start.toFixed(2)}s - ${s.sentence_end.toFixed(2)}s</span> | <span class="conf-label ${confClass}">Conf: ${(avgConf * 100).toFixed(0)}%</span></span>
             `;
 
@@ -952,12 +1094,10 @@
         function updateCardSpeakerDisplay(s, manual) {
             const el = AppState.cardElements.get(s.id);
             if (!el) return;
-            const span = el.querySelector('.speaker-edit');
-            if (!span) return;
-            if (document.activeElement !== span) {
-                span.textContent = s.speaker;
-            }
-            span.classList.toggle('inherited', !manual);
+            const btn = el.querySelector('.speaker-btn');
+            if (!btn) return;
+            btn.textContent = s.speaker;
+            btn.classList.toggle('inherited', !manual);
         }
 
         function propagateSpeakerForward(fromIndex, newSpeaker) {
@@ -976,91 +1116,178 @@
             const newSpeaker = newSpeakerRaw.trim() || "UU";
             s.speaker = newSpeaker;
             s.speakerManual = true;
-            if (newSpeaker !== 'UU') AppState.knownSpeakers.add(newSpeaker);
+            // Agar ye naam list me nahi hai to automatically add kar do
+            if (newSpeaker !== 'UU' && !AppState.speakerList.includes(newSpeaker)) {
+                AppState.speakerList.push(newSpeaker);
+                AppState.speakerList.sort((a, b) => a.localeCompare(b));
+            }
             updateCardSpeakerDisplay(s, true);
             propagateSpeakerForward(idx, newSpeaker);
             triggerAutoSave();
         }
 
-        // --- SPEAKER NAME SUGGESTIONS: pehle se use ho chuke naam yaad rakh kar 1-tap selection ---
-        function rebuildKnownSpeakers() {
-            AppState.knownSpeakers = new Set();
-            AppState.sentences.forEach(s => {
-                if (s.speaker && s.speaker !== 'UU') AppState.knownSpeakers.add(s.speaker);
-            });
+        // Project load hone par saved sentences se speaker list rebuild karo
+        function rebuildSpeakerList() {
+            const seen = new Set();
+            AppState.sentences.forEach(s => { if (s.speaker && s.speaker !== 'UU') seen.add(s.speaker); });
+            AppState.speakerList = Array.from(seen).sort((a, b) => a.localeCompare(b));
         }
 
-        function getSpeakerSuggestions(query) {
-            const q = (query || '').trim().toLowerCase();
-            const names = Array.from(AppState.knownSpeakers).sort((a, b) => a.localeCompare(b));
-            if (!q) return names; // box khali hai -> sabhi known naam dikhao
-            return names.filter(n => n.toLowerCase().includes(q));
-        }
-
-        function positionSuggestPopup(targetEl) {
-            const popup = document.getElementById('speaker-suggest-popup');
-            const rect = targetEl.getBoundingClientRect();
+        // ── SPEAKER DROPDOWN (speaker-btn click par khulta hai) ──
+        function positionDropdown(triggerEl) {
+            const dd = document.getElementById('speaker-dropdown');
+            const rect = triggerEl.getBoundingClientRect();
             const vw = window.innerWidth, vh = window.innerHeight;
-            let top = rect.bottom + 6;
+            const W = 220, H = 280;
+            let top = rect.bottom + 4;
             let left = rect.left;
-            const popupWidth = 240;
-            if (left + popupWidth + 8 > vw) left = Math.max(8, vw - popupWidth - 8);
-            if (top + 230 > vh) top = Math.max(8, rect.top - 236); // neeche jagah na ho to upar dikhao
-            popup.style.top = `${top}px`;
-            popup.style.left = `${left}px`;
+            if (left + W + 8 > vw) left = Math.max(8, vw - W - 8);
+            if (top + H > vh) top = Math.max(8, rect.top - H - 4);
+            dd.style.top = `${top}px`;
+            dd.style.left = `${left}px`;
         }
 
-        function showSpeakerSuggestions(targetEl, currentQuery) {
-            const list = getSpeakerSuggestions(currentQuery);
-            const popup = document.getElementById('speaker-suggest-popup');
-            if (list.length === 0) { popup.classList.remove('visible'); return; }
-            const listEl = document.getElementById('speaker-suggest-list');
-            listEl.innerHTML = list.map(name =>
-                `<span class="suggest-chip" data-name="${escapeHtml(name)}">${escapeHtml(name)}</span>`
-            ).join('');
-            positionSuggestPopup(targetEl);
-            popup.classList.add('visible');
+        function renderDropdownList() {
+            const listEl = document.getElementById('spk-drop-list');
+            const list = AppState.speakerList;
+            if (list.length === 0) {
+                listEl.innerHTML = `<div style="padding:10px 12px;font-size:13px;color:#888;">Koi speaker nahi mila.<br>Neeche "New Speaker" se add karo.</div>`;
+            } else {
+                const curId = AppState.activeDropdownCardId;
+                const curIdx = curId ? AppState.sentenceById.get(curId) : undefined;
+                const curSpeaker = curIdx !== undefined ? AppState.sentences[curIdx].speaker : '';
+                listEl.innerHTML = list.map(name =>
+                    `<button class="spk-drop-item${name === curSpeaker ? ' active-spk' : ''}" data-name="${escapeHtml(name)}">${escapeHtml(name)}</button>`
+                ).join('');
+            }
+            // "New Speaker" row always visible at bottom
+            const newRow = document.getElementById('spk-drop-new');
+            newRow.style.display = 'flex';
+            document.getElementById('spk-drop-input').value = '';
         }
 
-        function hideSpeakerSuggestions() {
-            document.getElementById('speaker-suggest-popup').classList.remove('visible');
-            AppState.activeSpeakerEditEl = null;
+        function openSpeakerDropdown(triggerBtn, cardId) {
+            AppState.activeDropdownCardId = cardId;
+            renderDropdownList();
+            positionDropdown(triggerBtn);
+            document.getElementById('speaker-dropdown').classList.add('visible');
         }
 
-        function setupSpeakerSuggestions() {
-            const popup = document.getElementById('speaker-suggest-popup');
+        function closeSpeakerDropdown() {
+            document.getElementById('speaker-dropdown').classList.remove('visible');
+            AppState.activeDropdownCardId = null;
+        }
+
+        function applySpeakerSelection(name) {
+            const id = AppState.activeDropdownCardId;
+            if (!id) return;
+            closeSpeakerDropdown();
+            handleSpeakerEdit(id, name);
+        }
+
+        function setupSpeakerDropdown() {
+            const dd = document.getElementById('speaker-dropdown');
             const container = document.getElementById('virtual-scroller-content');
 
-            container.addEventListener('focusin', (e) => {
-                if (!e.target.classList.contains('speaker-edit')) return;
-                AppState.activeSpeakerEditEl = e.target;
-                showSpeakerSuggestions(e.target, e.target.textContent);
-            });
-
-            container.addEventListener('input', (e) => {
-                if (!e.target.classList.contains('speaker-edit')) return;
-                showSpeakerSuggestions(e.target, e.target.textContent);
-            });
-
-            // Chip par tap karte waqt contenteditable se focus na hate (warna text save hone se pehle hi blur ho jaayega)
-            popup.addEventListener('mousedown', (e) => {
-                if (e.target.closest('.suggest-chip')) e.preventDefault();
-            });
-            popup.addEventListener('click', (e) => {
-                const chip = e.target.closest('.suggest-chip');
-                if (!chip) return;
-                const el = AppState.activeSpeakerEditEl;
-                if (el) {
-                    el.textContent = chip.dataset.name;
-                    el.blur(); // yahi se focusout chal kar save + aage propagate kar dega
+            // Speaker button click → dropdown kholna
+            container.addEventListener('click', (e) => {
+                const btn = e.target.closest('.speaker-btn');
+                if (!btn) return;
+                e.stopPropagation();
+                const cardId = btn.dataset.cardId;
+                if (AppState.activeDropdownCardId === cardId && dd.classList.contains('visible')) {
+                    closeSpeakerDropdown(); return;
                 }
-                hideSpeakerSuggestions();
+                openSpeakerDropdown(btn, cardId);
             });
 
-            // Scroll/resize hote hi popup hide kar do, warna position galat reh jaati hai
-            document.getElementById('transcript-area').addEventListener('scroll', hideSpeakerSuggestions);
-            window.addEventListener('resize', () => {
-                if (AppState.activeSpeakerEditEl) hideSpeakerSuggestions();
+            // Existing speaker select
+            dd.addEventListener('click', (e) => {
+                const item = e.target.closest('.spk-drop-item');
+                if (item) { applySpeakerSelection(item.dataset.name); return; }
+            });
+
+            // New speaker "Done" button
+            document.getElementById('spk-drop-done-btn').addEventListener('click', () => {
+                const val = document.getElementById('spk-drop-input').value.trim();
+                if (!val) return;
+                applySpeakerSelection(val);
+            });
+
+            // Enter key in new speaker input
+            document.getElementById('spk-drop-input').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    const val = e.target.value.trim();
+                    if (val) applySpeakerSelection(val);
+                }
+            });
+
+            // Click bahar → close
+            document.addEventListener('click', (e) => {
+                if (!dd.contains(e.target) && !e.target.closest('.speaker-btn')) closeSpeakerDropdown();
+            });
+
+            // Scroll → close (position stale ho jaati hai)
+            document.getElementById('transcript-area').addEventListener('scroll', closeSpeakerDropdown);
+        }
+
+        // ── MANAGE SPEAKERS PANEL ──
+        function renderManageSpeakerList() {
+            const el = document.getElementById('manage-speaker-list');
+            if (AppState.speakerList.length === 0) {
+                el.innerHTML = `<div style="font-size:13px;color:#888;padding:8px 0;">Abhi koi speaker nahi hai. Neeche se add karo.</div>`;
+                return;
+            }
+            el.innerHTML = AppState.speakerList.map(name =>
+                `<span class="manage-chip">
+                    ${escapeHtml(name)}
+                    <button class="manage-chip-del" data-name="${escapeHtml(name)}" title="Hata do">✕</button>
+                </span>`
+            ).join('');
+        }
+
+        function setupManageSpeakersPanel() {
+            const panel = document.getElementById('manage-speakers-panel');
+            const input = document.getElementById('manage-spk-input');
+
+            document.getElementById('speakers-mgr-btn').addEventListener('click', () => {
+                renderManageSpeakerList();
+                panel.classList.add('visible');
+                input.value = '';
+                input.focus();
+            });
+
+            document.getElementById('manage-spk-close-btn').addEventListener('click', () => {
+                panel.classList.remove('visible');
+            });
+
+            // Overlay (background) click → close
+            panel.addEventListener('click', (e) => {
+                if (e.target === panel) panel.classList.remove('visible');
+            });
+
+            function addSpeaker() {
+                const val = input.value.trim();
+                if (!val || val === 'UU') return;
+                if (!AppState.speakerList.includes(val)) {
+                    AppState.speakerList.push(val);
+                    AppState.speakerList.sort((a, b) => a.localeCompare(b));
+                }
+                input.value = '';
+                renderManageSpeakerList();
+                input.focus();
+            }
+
+            document.getElementById('manage-spk-add-btn').addEventListener('click', addSpeaker);
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') addSpeaker(); });
+
+            // Delete chip
+            document.getElementById('manage-speaker-list').addEventListener('click', (e) => {
+                const del = e.target.closest('.manage-chip-del');
+                if (!del) return;
+                const name = del.dataset.name;
+                AppState.speakerList = AppState.speakerList.filter(n => n !== name);
+                renderManageSpeakerList();
             });
         }
 
@@ -1098,7 +1325,7 @@
             container.addEventListener('click', (e) => {
                 const header = e.target.closest('.card-header');
                 if (!header) return;
-                if (e.target.closest('.speaker-edit')) return; // speaker edit करते वक्त seek ना हो
+                if (e.target.closest('.speaker-btn')) return; // speaker dropdown button click → seek nahi hona chahiye
                 const card = header.closest('.sentence-card');
                 const idx = AppState.sentenceById.get(card.dataset.id);
                 if (idx === undefined) return;
@@ -1112,7 +1339,7 @@
                 // Double Enter (blank line) = is point par sentence ko do alag cards me todna hai
                 if (/\n[ \t]*\n/.test(e.target.value)) {
                     const didSplit = trySplitSentence(card, e.target);
-                    if (didSplit) return; // textarea.value already trim ho chuka, save/grow andar ho gaya
+                    if (didSplit) return;
                 }
 
                 autoGrow(e.target);
@@ -1121,13 +1348,6 @@
 
             container.addEventListener('focusin', (e) => {
                 if (e.target.classList.contains('shuddh-text-area')) pauseForEdit();
-            });
-
-            container.addEventListener('focusout', (e) => {
-                if (!e.target.classList.contains('speaker-edit')) return;
-                const card = e.target.closest('.sentence-card');
-                handleSpeakerEdit(card.dataset.id, e.target.innerText);
-                hideSpeakerSuggestions();
             });
         }
 
@@ -1370,7 +1590,7 @@
             AppState.videoId = videoId;
             AppState.sentences = data;
             buildSentenceIndex();
-            rebuildKnownSpeakers(); // pichle saare speaker names suggestion list me load ho jaayein
+            rebuildSpeakerList(); // pichle saare speaker names dropdown list me load ho jaayein
             sessionStorage.removeItem('preventAutoLoad');
 
             document.getElementById('setup-screen').classList.remove('active');
@@ -1410,7 +1630,8 @@
             setupTranscriptDelegation();
             setupManualScrollDetection();
             setupSeekBar();
-            setupSpeakerSuggestions();
+            setupSpeakerDropdown();
+            setupManageSpeakersPanel();
 
             function checkInputs() {
                 startBtn.style.display = (urlInput.value.trim() !== '' && fileInput.files.length > 0) ? 'block' : 'none';
