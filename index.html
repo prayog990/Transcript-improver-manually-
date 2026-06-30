@@ -332,10 +332,32 @@
         }
 
         /* Confidence Colors */
-        .conf-high { color: #4caf50; }
-        .conf-med { color: #ffeb3b; }
-        .conf-low { color: #ff9800; }
-        .conf-poor { color: var(--error); }
+        /* Review tick mark - confidence score ki jagah, ye batata hai kaam kahan tak ho chuka hai */
+        .review-tick {
+            width: 24px;
+            height: 24px;
+            min-width: 24px;
+            border-radius: 50%;
+            border: 2px solid var(--border);
+            background: transparent;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #4caf50;
+            font-size: 13px;
+            font-weight: bold;
+            flex-shrink: 0;
+            padding: 0;
+            margin: 0;
+            min-height: unset;
+            line-height: 1;
+        }
+        .review-tick.ticked {
+            background: #4caf50;
+            border-color: #4caf50;
+            color: #fff;
+        }
 
         .player-error-box {
             color: #fff;
@@ -691,7 +713,52 @@
         };
 
         // --- 3. SENTENCE GROUPING ENGINE (असली logic वही है, बदला नहीं गया) ---
+        // Naya simple format: [[start_ms, end_ms, "text"], ...] - har entry seedha ek card banta hai,
+        // koi punctuation-based auto-split nahi hota, original subtitle block/timing waisi hi rehti hai.
+        function isSimpleSubtitleFormat(data) {
+            return Array.isArray(data) && data.length > 0 &&
+                   Array.isArray(data[0]) && data[0].length === 3 &&
+                   typeof data[0][0] === 'number' && typeof data[0][1] === 'number' &&
+                   typeof data[0][2] === 'string';
+        }
+
+        async function buildSentencesFromSimpleFormat(dataArray) {
+            updateProcessLog("Subtitle Blocks Load Ho Rahe Hain...");
+            const sentences = [];
+            const total = dataArray.length;
+            const chunkSize = 2000;
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+
+            for (let i = 0; i < total; i += chunkSize) {
+                const end = Math.min(i + chunkSize, total);
+                for (let idx = i; idx < end; idx++) {
+                    const [startMs, endMs, text] = dataArray[idx];
+                    sentences.push({
+                        id: `s${String(idx + 1).padStart(6, '0')}`,
+                        speaker: 'UU',
+                        speakerManual: false,
+                        sentence_start: startMs / 1000,
+                        sentence_end: endMs / 1000,
+                        shuddh_text: String(text).trim(),
+                        words: [], // is format me per-word data nahi hota - JSON export proportional estimate use karega
+                        textEdited: false,
+                        reviewed: false
+                    });
+                }
+                const progress = Math.min(100, Math.round((end / total) * 100));
+                progressBar.style.width = `${progress}%`;
+                progressText.innerText = `${progress}%`;
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+            return sentences;
+        }
+
         async function processRawJSON(rawWords) {
+            if (isSimpleSubtitleFormat(rawWords)) {
+                return await buildSentencesFromSimpleFormat(rawWords);
+            }
+
             updateProcessLog("Grouping Sentences...");
             const sentences = [];
             let currentSentence = null;
@@ -743,7 +810,8 @@
                             sentence_start: startTime,
                             words: [],
                             shuddh_text: "",
-                            textEdited: false        // true hote hi real word-timestamps trust nahi kiye jaate (export ke liye)
+                            textEdited: false,       // true hote hi real word-timestamps trust nahi kiye jaate (export ke liye)
+                            reviewed: false          // tick-mark state - autosave/resume ke liye
                         };
                     }
 
@@ -801,17 +869,14 @@
             card.className = 'sentence-card';
             card.dataset.id = s.id;
 
-            const avgConf = s.words.length ? s.words.reduce((acc, w) => acc + (w.c || 1), 0) / s.words.length : 1;
-            let confClass = 'conf-high';
-            if (avgConf < 0.85) confClass = 'conf-med';
-            if (avgConf < 0.75) confClass = 'conf-low';
-            if (avgConf < 0.50) confClass = 'conf-poor';
-
             const header = document.createElement('div');
             header.className = 'card-header';
             header.innerHTML = `
                 <span><button class="speaker-btn${s.speakerManual ? '' : ' inherited'}" data-card-id="${s.id}">${escapeHtml(s.speaker)}</button> <span class="id-label">${s.id}</span></span>
-                <span><span class="time-range">⏱ ${s.sentence_start.toFixed(2)}s - ${s.sentence_end.toFixed(2)}s</span> | <span class="conf-label ${confClass}">Conf: ${(avgConf * 100).toFixed(0)}%</span></span>
+                <span style="display:flex;align-items:center;gap:8px;">
+                    <span class="time-range">⏱ ${s.sentence_start.toFixed(2)}s - ${s.sentence_end.toFixed(2)}s</span>
+                    <button class="review-tick${s.reviewed ? ' ticked' : ''}" data-card-id="${s.id}" title="Reviewed mark karo">${s.reviewed ? '✓' : ''}</button>
+                </span>
             `;
 
             // textarea.value से text भरा जाता है (innerHTML से नहीं) — वरना & < > वाले शब्द टेक्स्ट तोड़ देते थे
@@ -891,16 +956,26 @@
             if (!el) return;
             const timeRange = el.querySelector('.time-range');
             if (timeRange) timeRange.textContent = `⏱ ${s.sentence_start.toFixed(2)}s - ${s.sentence_end.toFixed(2)}s`;
-            const confLabel = el.querySelector('.conf-label');
-            if (confLabel) {
-                const avgConf = s.words.length ? s.words.reduce((a, w) => a + (w.c || 1), 0) / s.words.length : 1;
-                let cls = 'conf-high';
-                if (avgConf < 0.85) cls = 'conf-med';
-                if (avgConf < 0.75) cls = 'conf-low';
-                if (avgConf < 0.50) cls = 'conf-poor';
-                confLabel.className = `conf-label ${cls}`;
-                confLabel.textContent = `Conf: ${(avgConf * 100).toFixed(0)}%`;
-            }
+            updateTickDisplay(s);
+        }
+
+        // Review tick - confidence ki jagah - taaki user ko pata rahe kaam kahan tak ho chuka hai
+        function updateTickDisplay(s) {
+            const el = AppState.cardElements.get(s.id);
+            if (!el) return;
+            const tick = el.querySelector('.review-tick');
+            if (!tick) return;
+            tick.classList.toggle('ticked', !!s.reviewed);
+            tick.textContent = s.reviewed ? '✓' : '';
+        }
+
+        function toggleReviewed(id) {
+            const idx = AppState.sentenceById.get(id);
+            if (idx === undefined) return;
+            const s = AppState.sentences[idx];
+            s.reviewed = !s.reviewed;
+            updateTickDisplay(s);
+            triggerAutoSave();
         }
 
         // Split ke baad ek sentence ke aage wale sab cards ke IDs ko sequential rakhta hai (s000007, s000008...).
@@ -958,6 +1033,7 @@
             s.sentence_end = splitTime;
             s.words = origWords.slice(0, wordSplitIdx);
             s.textEdited = true;
+            s.reviewed = false; // text/time badla hai, dobara check karna padega
 
             // Part B: naya card - speaker original se copy hota hai (अक्सर isi liye split hota hai),
             // inherited (dim) dikhega jab tak user khud edit na kare
@@ -969,7 +1045,8 @@
                 sentence_end: origEnd,
                 shuddh_text: partB,
                 words: origWords.slice(wordSplitIdx),
-                textEdited: true
+                textEdited: true,
+                reviewed: false
             };
 
             AppState.sentences.splice(idx + 1, 0, newSentence);
@@ -1086,6 +1163,10 @@
             const s = AppState.sentences[idx];
             s.shuddh_text = newText;
             s.textEdited = true; // ab is line ke real ASR word-timings export ke liye trust nahi kiye jaayenge
+            if (s.reviewed) {
+                s.reviewed = false; // content badal gaya - dobara check karna padega, tick apne aap hat jaayega
+                updateTickDisplay(s);
+            }
             triggerAutoSave();
         }
 
@@ -1323,6 +1404,9 @@
             const container = document.getElementById('virtual-scroller-content');
 
             container.addEventListener('click', (e) => {
+                const tick = e.target.closest('.review-tick');
+                if (tick) { toggleReviewed(tick.dataset.cardId); return; }
+
                 const header = e.target.closest('.card-header');
                 if (!header) return;
                 if (e.target.closest('.speaker-btn')) return; // speaker dropdown button click → seek nahi hona chahiye
